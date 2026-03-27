@@ -29,11 +29,6 @@ const IndividualMessage = () => {
   // Email filtering state
   const [emailFilter, setEmailFilter] = useState('all'); // 'all', 'with_email', 'without_email'
   
-  // Email format validation state
-  const [emailFormatFilter, setEmailFormatFilter] = useState('all'); // 'all', 'valid_format', 'invalid_format'
-  
-  // URL filtering state
-  const [urlFilter, setUrlFilter] = useState('all'); // 'all', 'with_url', 'without_url'
   
   // Message toolbar state
   const [showToolbar, setShowToolbar] = useState(true);
@@ -167,21 +162,8 @@ const IndividualMessage = () => {
       emailFilter === 'without_email' && (!company.email || company.email.trim() === '')
     );
     
-    // Email format filtering
-    const emailFormatMatch = emailFormatFilter === 'all' || (
-      emailFormatFilter === 'valid_format' && isValidEmail(company.email)
-    ) || (
-      emailFormatFilter === 'invalid_format' && company.email && company.email.trim() !== '' && !isValidEmail(company.email)
-    );
     
-    // URL filtering
-    const urlMatch = urlFilter === 'all' || (
-      urlFilter === 'with_url' && company.website && company.website.trim() !== ''
-    ) || (
-      urlFilter === 'without_url' && (!company.website || company.website.trim() === '')
-    );
-    
-    return categoryMatch && cityMatch && emailMatch && emailFormatMatch && urlMatch;
+    return categoryMatch && cityMatch && emailMatch;
   });
 
   // Auto-populate form when company is selected
@@ -568,44 +550,6 @@ const IndividualMessage = () => {
                   <option value="without_email">📱 Without Email</option>
                 </select>
               </div>
-              
-              {/* Email Format Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Format
-                </label>
-                <select
-                  value={emailFormatFilter}
-                  onChange={(e) => {
-                    setEmailFormatFilter(e.target.value);
-                    setSelectedCompany(null); // Clear selection when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Formats</option>
-                  <option value="valid_format">✅ Valid Format</option>
-                  <option value="invalid_format">❌ Invalid Format</option>
-                </select>
-              </div>
-              
-              {/* URL Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Website URL
-                </label>
-                <select
-                  value={urlFilter}
-                  onChange={(e) => {
-                    setUrlFilter(e.target.value);
-                    setSelectedCompany(null); // Clear selection when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Companies</option>
-                  <option value="with_url">🌐 With Website</option>
-                  <option value="without_url">📄 No Website</option>
-                </select>
-              </div>
             </div>
             
             {/* Company Selection Table */}
@@ -735,44 +679,6 @@ const IndividualMessage = () => {
                   <option value="all">All Companies</option>
                   <option value="with_email">📧 With Email</option>
                   <option value="without_email">📱 Without Email</option>
-                </select>
-              </div>
-              
-              {/* Email Format Filter for Bulk Mode */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Email Format
-                </label>
-                <select
-                  value={emailFormatFilter}
-                  onChange={(e) => {
-                    setEmailFormatFilter(e.target.value);
-                    setSelectedCompanies([]); // Clear selections when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Formats</option>
-                  <option value="valid_format">✅ Valid Format</option>
-                  <option value="invalid_format">❌ Invalid Format</option>
-                </select>
-              </div>
-              
-              {/* URL Filter for Bulk Mode */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Website URL
-                </label>
-                <select
-                  value={urlFilter}
-                  onChange={(e) => {
-                    setUrlFilter(e.target.value);
-                    setSelectedCompanies([]); // Clear selections when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Companies</option>
-                  <option value="with_url">🌐 With Website</option>
-                  <option value="without_url">📄 No Website</option>
                 </select>
               </div>
             </div>
