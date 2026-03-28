@@ -41,7 +41,6 @@ const Upload = () => {
         return await axios.get(`${API_BASE_URL}/companies`);
       }, 3, 1000);
       setCompanies(response.data);
-      console.log('Fetched companies:', response.data.length);
     } catch (error) {
       console.error('Failed to fetch companies:', error);
     }
@@ -177,6 +176,17 @@ const Upload = () => {
   // Fetch processed Excel Scraper data
   const fetchProcessedData = async (filename) => {
     try {
+      // First check if file exists
+      const checkResponse = await makeApiCall(async () => {
+        return await axios.get(`http://localhost:5000/api/excel-scraper/check/${filename}`);
+      }, 2, 1000);
+
+      if (!checkResponse.data.exists) {
+        console.log('File no longer exists:', filename);
+        setDataError('The processed file has expired. Please re-upload your Excel file to generate a new processed file.');
+        return;
+      }
+
       // Download and process Excel file with rate limiting
       const response = await makeApiCall(async () => {
         return await axios.get(`http://localhost:5000/api/excel-scraper/download/${filename}`, {
@@ -215,7 +225,11 @@ const Upload = () => {
       
     } catch (err) {
       console.error('Failed to fetch processed data:', err);
-      setDataError('Failed to load processed data');
+      if (err.response?.status === 404) {
+        setDataError('The processed file has expired or been deleted. Please re-upload your Excel file to generate a new processed file.');
+      } else {
+        setDataError('Failed to load processed data');
+      }
     }
   };
 
@@ -240,7 +254,6 @@ const Upload = () => {
   // Fetch recent processed data
   const fetchRecentProcessedData = async () => {
     try {
-      console.log('Fetching recent processed data...');
       const historyResponse = await makeApiCall(async () => {
         return await axios.get('http://localhost:5000/api/excel-scraper/history');
       }, 3, 2000);
@@ -249,21 +262,41 @@ const Upload = () => {
       
       if (recentHistory.length > 0) {
         const mostRecent = recentHistory[0];
-        console.log('Found recent processed file:', mostRecent);
-        setLastProcessedFile(mostRecent);
-        await fetchProcessedData(mostRecent.processedFilename);
+        
+        // Check if file exists before trying to fetch
+        try {
+          const checkResponse = await makeApiCall(async () => {
+            return await axios.get(`http://localhost:5000/api/excel-scraper/check/${mostRecent.processedFilename}`);
+          }, 2, 1000);
+
+          if (checkResponse.data.exists) {
+            setLastProcessedFile(mostRecent);
+            await fetchProcessedData(mostRecent.processedFilename);
+          } else {
+            // Clear expired file references
+            setLastProcessedFile(null);
+            setProcessedData(null);
+            setDataError('');
+          }
+        } catch (checkError) {
+          // Clear references if check fails
+          setLastProcessedFile(null);
+          setProcessedData(null);
+          setDataError('');
+        }
       } else {
-        console.log('No recent processed data found');
+        setLastProcessedFile(null);
+        setProcessedData(null);
       }
     } catch (err) {
-      console.log('No recent processed data found');
+      setLastProcessedFile(null);
+      setProcessedData(null);
     }
   };
 
   // Auto-load data on component mount
   useEffect(() => {
     const initializeData = async () => {
-      console.log('Initializing data...');
       await fetchCompanies();
       await fetchRecentProcessedData();
     };
@@ -272,28 +305,8 @@ const Upload = () => {
 
   // Update companies count when companies state changes
   useEffect(() => {
-    console.log('Companies state updated:', companies.length, 'companies');
+    // Silently update without console logs
   }, [companies]);
-
-  // Update processed data when processedData state changes
-  useEffect(() => {
-    if (processedData) {
-      console.log('Processed data updated:', Object.keys(processedData).length, 'sheets');
-      
-      // Automatically upload when processed data is available
-      const autoUpload = async () => {
-        console.log('Auto-uploading processed data from useEffect...');
-        try {
-          const uploadedCount = await uploadProcessedDataToCompanies();
-          console.log('Auto-upload from useEffect completed:', uploadedCount, 'companies uploaded');
-        } catch (error) {
-          console.log('Auto-upload from useEffect failed:', error);
-        }
-      };
-      
-      autoUpload();
-    }
-  }, [processedData]);
 
   // Force refresh all data
   const forceRefreshAllData = async () => {
@@ -549,16 +562,6 @@ const Upload = () => {
       throw error;
     }
   };
-
-  // Auto-load data on component mount
-  useEffect(() => {
-    const initializeData = async () => {
-      console.log('Initializing data...');
-      await fetchCompanies();
-      await fetchRecentProcessedData();
-    };
-    initializeData();
-  }, []);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-8">

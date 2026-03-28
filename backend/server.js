@@ -91,8 +91,16 @@ const uploadHistorySchema = new mongoose.Schema({
 const UploadHistory = mongoose.model('UploadHistory', uploadHistorySchema);
 
 // Excel Scraper utilities
+// Enhanced email regex for better extraction
 const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi;
 const phoneRegex = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4,6}|\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4,6}\b|\b\d{2,4}[-.\s]?\d{2,4}[-.\s]?\d{4,8}\b|\b\d{8,}\b|(?:\b\d{3}\b[-.\s]?)(?:\b\d{6}\b)|(?:\b\d{3}\b[-.\s]?)(?:\b\d{3}\b[-.\s]?)(?:\b\d{4}\b)/g;
+
+// Additional email patterns for better extraction
+const additionalEmailPatterns = [
+    /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi,
+    /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/gi,
+    /(?:mailto:)?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/gi
+];
 
 // Enhanced phone extraction function
 const extractPhoneNumbers = (text) => {
@@ -312,7 +320,12 @@ const scrapeWebsite = async (url) => {
             'body', 'footer', '.contact', '.footer', '.header', '.nav',
             'a[href^="mailto:"]', 'a[href^="tel:"]', '[href*="contact"]',
             '.phone', '.email', '[itemprop="telephone"]', '[itemprop="email"]',
-            '.address', '.info', '.about', 'main', 'section', 'article'
+            '.address', '.info', '.about', 'main', 'section', 'article',
+            // Additional email-specific selectors
+            '.email-address', '.contact-email', '.support-email', '.mail',
+            '[data-email]', '.email-us', '.contact-info', '.footer-info',
+            'span[class*="email"]', 'div[class*="email"]', 'a[class*="email"]',
+            '.business-email', '.company-email', '.office-email'
         ];
 
         let allText = '';
@@ -345,18 +358,28 @@ const scrapeWebsite = async (url) => {
 
         console.log(`Extracted text length: ${allText.length} characters`);
 
-        const emails = allText.match(emailRegex) || [];
-        const uniqueEmails = [...new Set(emails)]
-            .map(email => email.toLowerCase().trim())
+        // Use multiple email patterns for better extraction
+        let allEmails = [];
+        additionalEmailPatterns.forEach(pattern => {
+            const matches = allText.match(pattern) || [];
+            allEmails = allEmails.concat(matches);
+        });
+
+        const emails = [...new Set(allEmails)];
+        const uniqueEmails = emails
+            .map(email => email.toLowerCase().trim().replace(/^mailto:/, ''))
             .filter(email => {
                 return !email.includes('example.com') && 
                        !email.includes('test.com') && 
                        !email.includes('sample.com') &&
                        !email.includes('domain.com') &&
+                       !email.includes('yourdomain.com') &&
                        !email.match(/\.(png|jpg|jpeg|gif|css|js)$/) &&
-                       email.length > 5;
+                       email.length > 5 &&
+                       email.match(/^[^@]+@[^@]+\.[^@]+$/);
             })
-            .filter((email, index, self) => self.indexOf(email) === index);
+            .filter((email, index, self) => self.indexOf(email) === index)
+            .slice(0, 5); // Limit to 5 emails per company
 
         const phones = allText.match(phoneRegex) || [];
         
@@ -379,6 +402,13 @@ const scrapeWebsite = async (url) => {
             .slice(0, 5);
 
         console.log(`Found ${uniqueEmails.length} emails and ${uniquePhones.length} phones for ${url}`);
+        
+        if (uniqueEmails.length > 0) {
+            console.log(`Emails found: ${uniqueEmails.join(', ')}`);
+        }
+        if (uniquePhones.length > 0) {
+            console.log(`Phones found: ${uniquePhones.join(', ')}`);
+        }
 
         return {
             success: true,
@@ -541,9 +571,23 @@ const processExcelFile = async (filePath) => {
                     finalEmail = cleanedExistingEmail;
                     scrapeStatus = 'Used existing data (phone + email)';
                 } else if (cleanedExistingPhone) {
+                    // Has phone but no email - scrape for email
                     const scrapeResult = await scrapeWebsite(extractedUrl);
                     finalPhone = cleanedExistingPhone;
-                    scrapeStatus = scrapeResult.success ? 'Success' : `Error: ${scrapeResult.error}`;
+                    finalEmail = scrapeResult.success ? scrapeResult.emails.join(', ') : '';
+                    scrapeStatus = scrapeResult.success ? 'Success (scraped email)' : `Error: ${scrapeResult.error}`;
+                } else if (cleanedExistingEmail) {
+                    // Has email but no phone - scrape for phone
+                    const scrapeResult = await scrapeWebsite(extractedUrl);
+                    finalPhone = scrapeResult.success ? scrapeResult.phones.join(', ') : '';
+                    finalEmail = cleanedExistingEmail;
+                    scrapeStatus = scrapeResult.success ? 'Success (scraped phone)' : `Error: ${scrapeResult.error}`;
+                } else {
+                    // Has neither phone nor email - scrape for both
+                    const scrapeResult = await scrapeWebsite(extractedUrl);
+                    finalPhone = scrapeResult.success ? scrapeResult.phones.join(', ') : '';
+                    finalEmail = scrapeResult.success ? scrapeResult.emails.join(', ') : '';
+                    scrapeStatus = scrapeResult.success ? 'Success (scraped both)' : `Error: ${scrapeResult.error}`;
                 }
                 
                 return {
@@ -1390,25 +1434,87 @@ app.post('/api/excel-scraper/upload', upload.single('excelFile'), async (req, re
     }
 });
 
+// Excel Scraper check file endpoint
+app.get('/api/excel-scraper/check/:filename', (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const filePath = path.join(__dirname, 'uploads', filename);
+
+        console.log('Check file request for:', filename);
+        console.log('File path:', filePath);
+
+        const exists = require('fs').existsSync(filePath);
+        
+        if (exists) {
+            const stats = require('fs').statSync(filePath);
+            res.json({ 
+                exists: true, 
+                size: stats.size,
+                created: stats.birthtime,
+                message: 'File is available for download'
+            });
+        } else {
+            res.json({ 
+                exists: false, 
+                message: 'File has been expired or deleted. Please re-upload your Excel file to generate a new processed file.' 
+            });
+        }
+    } catch (error) {
+        console.error('Check file error:', error);
+        res.status(500).json({ error: 'Error checking file' });
+    }
+});
+
 // Excel Scraper download endpoint
 app.get('/api/excel-scraper/download/:filename', (req, res) => {
     try {
         const filename = req.params.filename;
         const filePath = path.join(__dirname, 'uploads', filename);
 
+        console.log('Download request for:', filename);
+        console.log('File path:', filePath);
+
         if (!require('fs').existsSync(filePath)) {
-            return res.status(404).json({ error: 'File not found' });
+            console.log('File not found:', filePath);
+            return res.status(404).json({ 
+                error: 'File not found',
+                message: 'The processed file has been expired or deleted. Please re-upload your Excel file to generate a new processed file.',
+                filename: filename
+            });
         }
 
+        console.log('File exists, serving download...');
         res.download(filePath, `processed-${filename}`, (err) => {
             if (err) {
                 console.error('Download error:', err);
-                res.status(500).json({ error: 'Error downloading file' });
+                if (!res.headersSent) {
+                    res.status(500).json({ error: 'Error downloading file' });
+                }
+            } else {
+                console.log('File downloaded successfully');
             }
         });
     } catch (error) {
         console.error('Download error:', error);
-        res.status(500).json({ error: 'Error downloading file' });
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Error downloading file' });
+        }
+    }
+});
+
+// Excel Scraper clear history endpoint
+app.delete('/api/excel-scraper/history', async (req, res) => {
+    try {
+        const result = await UploadHistory.deleteMany({});
+        console.log(`Cleared ${result.deletedCount} records from upload history`);
+        res.json({
+            success: true,
+            message: `Cleared ${result.deletedCount} records from upload history`,
+            count: result.deletedCount
+        });
+    } catch (error) {
+        console.error('Clear history error:', error);
+        res.status(500).json({ error: 'Error clearing history' });
     }
 });
 
@@ -1475,7 +1581,7 @@ app.get('/api/excel-scraper/test-scrape', async (req, res) => {
 // Periodic cleanup function for old upload files
 const cleanupOldFiles = () => {
     const uploadsDir = path.join(__dirname, 'uploads');
-    const maxAge = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+    const maxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
     
     try {
         if (fs.existsSync(uploadsDir)) {

@@ -42,11 +42,30 @@ function ExcelScraper() {
 
         if (recentHistory.length > 0) {
           const mostRecent = recentHistory[0];
-          setLastProcessedFile(mostRecent);
-          await fetchProcessedData(mostRecent.processedFilename);
+          
+          // Check if file exists before trying to fetch
+          try {
+            const checkResponse = await axios.get(`http://localhost:5000/api/excel-scraper/check/${mostRecent.processedFilename}`);
+
+            if (checkResponse.data.exists) {
+              setLastProcessedFile(mostRecent);
+              await fetchProcessedData(mostRecent.processedFilename);
+            } else {
+              // Clear expired file references
+              setLastProcessedFile(null);
+              setProcessedData(null);
+              setError('');
+            }
+          } catch (checkError) {
+            // Clear references if check fails
+            setLastProcessedFile(null);
+            setProcessedData(null);
+            setError('');
+          }
         }
       } catch (err) {
-        console.log('No recent processed data found');
+        setLastProcessedFile(null);
+        setProcessedData(null);
       }
     };
 
@@ -253,6 +272,14 @@ function ExcelScraper() {
 
   const handleDownload = async (filename) => {
     try {
+      // First check if file exists
+      const checkResponse = await axios.get(`http://localhost:5000/api/excel-scraper/check/${filename}`);
+
+      if (!checkResponse.data.exists) {
+        setError('The processed file has expired or been deleted. Please re-upload your Excel file to generate a new processed file.');
+        return;
+      }
+
       const response = await axios.get(`http://localhost:5000/api/excel-scraper/download/${filename}`, {
         responseType: 'blob',
       });
@@ -266,7 +293,11 @@ function ExcelScraper() {
       link.remove();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError('Download failed. Please try again.');
+      if (err.response?.status === 404) {
+        setError('The processed file has expired or been deleted. Please re-upload your Excel file to generate a new processed file.');
+      } else {
+        setError('Download failed. Please try again.');
+      }
     }
   };
 
@@ -281,6 +312,14 @@ function ExcelScraper() {
 
   const fetchProcessedData = async (filename) => {
     try {
+      // First check if file exists
+      const checkResponse = await axios.get(`http://localhost:5000/api/excel-scraper/check/${filename}`);
+
+      if (!checkResponse.data.exists) {
+        setError('The processed file has expired. Please re-upload your Excel file to generate a new processed file.');
+        return;
+      }
+
       // Fetch the processed Excel file
       const response = await axios.get(`http://localhost:5000/api/excel-scraper/download/${filename}`, {
         responseType: 'arraybuffer',
@@ -308,10 +347,12 @@ function ExcelScraper() {
 
       setProcessedData(allData);
       setCompanyCount(totalCompanies);
-      console.log(`Excel Scraper: Found ${totalCompanies} companies in processed data`);
     } catch (err) {
-      console.error('Failed to fetch processed data:', err);
-      setError('Failed to load processed data for display');
+      if (err.response?.status === 404) {
+        setError('The processed file has expired or been deleted. Please re-upload your Excel file to generate a new processed file.');
+      } else {
+        setError('Failed to load processed data for display');
+      }
     }
   };
 
