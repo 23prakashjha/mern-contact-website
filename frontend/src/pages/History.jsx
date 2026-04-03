@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import CompanyList from '../components/CompanyList';
-import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, MessageSquare, Send, Smartphone, AlertCircle, Trash2, Search, Filter, MapPin, Globe, Building, Users, TrendingUp, Calendar, Clock, ChevronDown, ChevronUp, Zap, Target, BarChart3, Activity, Sparkles, Star, Shield, Database, Layers, ZapOff } from 'lucide-react';
+import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, MessageSquare, Send, Smartphone, AlertCircle, Trash2, Search, Filter, MapPin, Globe, Building, Users, TrendingUp, Calendar, Clock, ChevronDown, ChevronUp, Zap, Target, BarChart3, Activity, Sparkles, Star, Shield, Database, Layers, ZapOff, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
 const History = () => {
@@ -23,9 +23,12 @@ const History = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(20);
   
-  // New filter states
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedCity, setSelectedCity] = useState('all');
+  // Manual filter state
+  const [manualFilters, setManualFilters] = useState({
+    category: 'all',
+    city: 'all',
+    search: ''
+  });
   
   // UI states
   const [showFilters, setShowFilters] = useState(false);
@@ -68,23 +71,26 @@ const History = () => {
         const latestFile = recentHistory[0];
         setLastProcessedFile(latestFile);
         
-        const response = await axios.get(`http://localhost:5000/api/excel-scraper/download/${latestFile.filename}`, {
-          responseType: 'arraybuffer',
-        });
+        // Only try to download if filename exists
+        if (latestFile.filename) {
+          const response = await axios.get(`http://localhost:5000/api/excel-scraper/download/${latestFile.filename}`, {
+            responseType: 'arraybuffer',
+          });
 
-        const data = new Uint8Array(response.data);
-        const workbook = XLSX.read(data, { type: 'array' });
-        
-        const sheetNames = workbook.SheetNames;
-        const allData = {};
-        
-        sheetNames.forEach(sheetName => {
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
-          allData[sheetName] = jsonData;
-        });
+          const data = new Uint8Array(response.data);
+          const workbook = XLSX.read(data, { type: 'array' });
+          
+          const sheetNames = workbook.SheetNames;
+          const allData = {};
+          
+          sheetNames.forEach(sheetName => {
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            allData[sheetName] = jsonData;
+          });
 
-        setProcessedData(allData);
+          setProcessedData(allData);
+        }
       }
     } catch (err) {
       console.log('No processed data found');
@@ -206,21 +212,21 @@ const History = () => {
 
   const filteredCompanies = companies.filter(company => {
     const matchesFilter = filter === 'all' || company.status === filter;
-    const matchesSearch = company.company.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         company.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (company.address && company.address.toLowerCase().includes(searchTerm.toLowerCase()));
+    const matchesSearch = company.company.toLowerCase().includes((manualFilters.search || '').toLowerCase()) ||
+                         company.email.toLowerCase().includes((manualFilters.search || '').toLowerCase()) ||
+                         (company.address && company.address.toLowerCase().includes((manualFilters.search || '').toLowerCase()));
     
-    const matchesCategory = selectedCategory === 'all' || 
-                           (company.category && company.category.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-                           (company.businessCategory && company.businessCategory.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-                           (company.industry && company.industry.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-                           (company.sector && company.sector.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-                           (company.type && company.type.toLowerCase().trim() === selectedCategory.toLowerCase().trim());
+    const matchesCategory = manualFilters.category === 'all' || 
+                           (company.category && company.category.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+                           (company.businessCategory && company.businessCategory.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+                           (company.industry && company.industry.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+                           (company.sector && company.sector.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+                           (company.type && company.type.toLowerCase().trim() === manualFilters.category.toLowerCase().trim());
     
     const normalizeText = (text) => text ? text.toLowerCase().trim().replace(/\s+/g, ' ') : '';
-    const selectedCityNormalized = normalizeText(selectedCity);
+    const selectedCityNormalized = normalizeText(manualFilters.city);
     
-    const matchesCity = selectedCity === 'all' || 
+    const matchesCity = manualFilters.city === 'all' || 
                        (company.address && company.address.trim() && normalizeText(company.address).includes(selectedCityNormalized)) ||
                        (company.city && normalizeText(company.city).includes(selectedCityNormalized)) ||
                        (company.location && normalizeText(company.location).includes(selectedCityNormalized));
@@ -236,6 +242,28 @@ const History = () => {
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
   const goToPreviousPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
   const goToNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+
+  // Handle manual filter changes
+  const handleManualFiltersChange = (filters) => {
+    setManualFilters(filters);
+    setCurrentPage(1); // Reset to first page when filters change
+  };
+
+  // Handle manual search changes
+  const handleManualSearchChange = (search) => {
+    setManualFilters(prev => ({ ...prev, search }));
+    setCurrentPage(1); // Reset to first page when search changes
+  };
+
+  // Clear all manual filters
+  const clearManualFilters = () => {
+    setManualFilters({
+      category: 'all',
+      city: 'all',
+      search: ''
+    });
+    setCurrentPage(1);
+  };
 
   const handleDeleteCompany = (companyId) => {
     setCompanies(prev => prev.filter(company => company._id !== companyId));
@@ -427,132 +455,129 @@ const History = () => {
           <div className={`space-y-8 ${animateCards ? 'animate-fadeIn' : 'opacity-0'}`}>
             {/* Search and Filters */}
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-4 border border-white/50">
-              <div className="space-y-3">
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search companies, emails, or addresses..."
-                    value={searchTerm}
-                    onChange={(e) => {
-                      setSearchTerm(e.target.value);
-                      setCurrentPage(1);
-                    }}
-                    className="w-full pl-10 pr-4 py-2 border-0 bg-gray-50 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all duration-300 text-gray-900 placeholder-gray-500 text-base"
-                  />
+              {/* Manual Filters */}
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center space-x-2">
+                    <Filter className="w-5 h-5 text-gray-600" />
+                    <h3 className="text-lg font-semibold text-gray-800">Filters</h3>
+                  </div>
+                  {(manualFilters.category !== 'all' || manualFilters.city !== 'all' || manualFilters.search.trim() !== '') && (
+                    <button
+                      onClick={clearManualFilters}
+                      className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Clear All</span>
+                    </button>
+                  )}
                 </div>
 
-                {/* Filters Toggle */}
-                <button
-                  onClick={() => setShowFilters(!showFilters)}
-                  className="flex items-center justify-between w-full px-4 py-2 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl hover:from-gray-100 hover:to-gray-200 transition-all duration-300"
-                >
-                  <div className="flex items-center space-x-2">
-                    <Filter className="w-4 h-4 text-gray-700" />
-                    <span className="font-bold text-gray-800 text-sm">Advanced Filters</span>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Search Input */}
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search companies..."
+                      value={manualFilters.search}
+                      onChange={(e) => handleManualSearchChange(e.target.value)}
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                    />
                   </div>
-                  {showFilters ? <ChevronUp className="w-4 h-4 text-gray-700" /> : <ChevronDown className="w-4 h-4 text-gray-700" />}
-                </button>
 
-                {/* Expandable Filters */}
-                {showFilters && (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 p-3 bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl">
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">Status</label>
-                      <select
-                        value={filter}
-                        onChange={(e) => {
-                          setFilter(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="w-full px-3 py-2 border-0 bg-white rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all duration-300 text-sm"
-                      >
-                        <option value="all">All Status</option>
-                        <option value="pending">Pending</option>
-                        <option value="sent">Sent</option>
-                        <option value="failed">Failed</option>
-                      </select>
-                    </div>
+                  {/* Category Filter */}
+                  <div>
+                    <select
+                      value={manualFilters.category}
+                      onChange={(e) => handleManualFiltersChange({ ...manualFilters, category: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                    >
+                      <option value="all">All Categories</option>
+                      {businessCategories.map((category) => (
+                        <option key={category} value={category}>
+                          {category}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">Category</label>
-                      <select
-                        value={selectedCategory}
-                        onChange={(e) => {
-                          setSelectedCategory(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="w-full px-3 py-2 border-0 bg-white rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all duration-300 text-sm"
-                      >
-                        <option value="all">All Categories</option>
-                        {businessCategories.map(category => (
-                          <option key={category} value={category}>{category}</option>
-                        ))}
-                      </select>
-                    </div>
+                  {/* City Filter */}
+                  <div>
+                    <select
+                      value={manualFilters.city}
+                      onChange={(e) => handleManualFiltersChange({ ...manualFilters, city: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                    >
+                      <option value="all">All Cities</option>
+                      {indiaCities.map((city) => (
+                        <option key={city} value={city}>
+                          {city}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
 
-                    <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">City</label>
-                      <select
-                        value={selectedCity}
-                        onChange={(e) => {
-                          setSelectedCity(e.target.value);
-                          setCurrentPage(1);
-                        }}
-                        className="w-full px-3 py-2 border-0 bg-white rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all duration-300 text-sm"
-                      >
-                        <option value="all">All Cities</option>
-                        {indiaCities.map(city => (
-                          <option key={city} value={city}>{city}</option>
-                        ))}
-                      </select>
-                    </div>
+                {/* Active Filters Display */}
+                {(manualFilters.category !== 'all' || manualFilters.city !== 'all' || manualFilters.search.trim() !== '') && (
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {manualFilters.search && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+                        Search: "{manualFilters.search}"
+                      </span>
+                    )}
+                    {manualFilters.category !== 'all' && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                        Category: {manualFilters.category}
+                      </span>
+                    )}
+                    {manualFilters.city !== 'all' && (
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800">
+                        City: {manualFilters.city}
+                      </span>
+                    )}
                   </div>
                 )}
-
-                {/* Active Filters */}
-                <div className="flex flex-wrap gap-2">
-                  {selectedCategory !== 'all' && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-purple-100 text-purple-800">
-                      Category: {selectedCategory}
-                      <button
-                        onClick={() => setSelectedCategory('all')}
-                        className="ml-2 text-purple-600 hover:text-purple-800 text-sm"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                  {selectedCity !== 'all' && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-green-100 text-green-800">
-                      City: {selectedCity}
-                      <button
-                        onClick={() => setSelectedCity('all')}
-                        className="ml-2 text-green-600 hover:text-green-800 text-sm"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                  {filter !== 'all' && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
-                      Status: {filter}
-                      <button
-                        onClick={() => setFilter('all')}
-                        className="ml-2 text-blue-600 hover:text-blue-800 text-sm"
-                      >
-                        ×
-                      </button>
-                    </span>
-                  )}
-                </div>
               </div>
+              
+              {/* Status Filter */}
+              <div className="mt-4">
+                <label className="block text-xs font-bold text-gray-700 mb-2">Communication Status</label>
+                <select
+                  value={filter}
+                  onChange={(e) => {
+                    setFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  className="w-full px-3 py-2 border-0 bg-white rounded-xl focus:ring-2 focus:ring-indigo-500 transition-all duration-300 text-sm"
+                >
+                  <option value="all">All Status</option>
+                  <option value="pending">Pending</option>
+                  <option value="sent">Sent</option>
+                  <option value="failed">Failed</option>
+                </select>
+              </div>
+              
+              {/* Active Status Filter */}
+              {filter !== 'all' && (
+                <div className="mt-2">
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                    Status: {filter}
+                    <button
+                      onClick={() => setFilter('all')}
+                      className="ml-2 text-blue-600 hover:text-blue-800 text-sm"
+                    >
+                      ×
+                    </button>
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Company List */}
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-white/50">
-              <CompanyList companies={currentCompanies} onDeleteCompany={handleDeleteCompany} searchTerm={searchTerm} filter={filter} />
+              <CompanyList companies={currentCompanies} onDeleteCompany={handleDeleteCompany} searchTerm={manualFilters.search} filter={filter} />
               
               {/* Pagination */}
               {filteredCompanies.length > itemsPerPage && (

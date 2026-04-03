@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Excel Scraper Progress Persistence</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .test-container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .step {
+            background: #e3f2fd;
+            padding: 15px;
+            margin: 10px 0;
+            border-left: 4px solid #2196f3;
+            border-radius: 4px;
+        }
+        .success {
+            background: #e8f5e8;
+            border-left-color: #4caf50;
+        }
+        .warning {
+            background: #fff3cd;
+            border-left-color: #ff9800;
+        }
+        button {
+            background: #2196f3;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #1976d2;
+        }
+        iframe {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Excel Scraper Progress Persistence Test</h1>
+    
+    <div class="test-container">
+        <h2>Test Instructions</h2>
+        <div class="step">
+            <strong>Step 1:</strong> Open the Excel Scraper page in the iframe below
+        </div>
+        <div class="step">
+            <strong>Step 2:</strong> Upload an Excel file to start the scraping process
+        </div>
+        <div class="step">
+            <strong>Step 3:</strong> While the process is running, navigate away from the Excel Scraper page (go to Dashboard, Upload, etc.)
+        </div>
+        <div class="step success">
+            <strong>Step 4:</strong> Navigate back to the Excel Scraper page - the progress should continue showing!
+        </div>
+        <div class="step warning">
+            <strong>Expected Behavior:</strong> Progress bar, percentages, and status should persist across navigation
+        </div>
+    </div>
+
+    <div class="test-container">
+        <h2>Quick Navigation</h2>
+        <button onclick="navigateTo('/excel-scraper')">Excel Scraper</button>
+        <button onclick="navigateTo('/')">Dashboard</button>
+        <button onclick="navigateTo('/upload')">Upload</button>
+        <button onclick="navigateTo('/history')">History</button>
+        <button onclick="checkSessionStorage()">Check Session Storage</button>
+        <button onclick="clearSessionStorage()">Clear Session Storage</button>
+    </div>
+
+    <div class="test-container">
+        <h2>Session Storage Status</h2>
+        <div id="storage-status">No session storage data found</div>
+    </div>
+
+    <div class="test-container">
+        <h2>Application iframe</h2>
+        <iframe id="app-frame" src="http://localhost:5173/excel-scraper" title="MERN Contact Website"></iframe>
+    </div>
+
+    <script>
+        function navigateTo(path) {
+            const iframe = document.getElementById('app-frame');
+            iframe.src = 'http://localhost:5173' + path;
+        }
+
+        function checkSessionStorage() {
+            const storageStatus = document.getElementById('storage-status');
+            const progressData = sessionStorage.getItem('excelScraperProgress');
+            
+            if (progressData) {
+                try {
+                    const parsed = JSON.parse(progressData);
+                    storageStatus.innerHTML = `
+                        <div class="step success">
+                            <strong>Session Storage Found:</strong><br>
+                            Progress: ${parsed.progress}%<br>
+                            Current Step: ${parsed.currentStep}<br>
+                            Processing: ${parsed.processing}<br>
+                            Time Remaining: ${parsed.estimatedTimeRemaining}s<br>
+                            Total Companies: ${parsed.totalCompanies}<br>
+                            Timestamp: ${new Date(parsed.timestamp).toLocaleString()}
+                        </div>
+                    `;
+                } catch (error) {
+                    storageStatus.innerHTML = `<div class="step warning">Error parsing session storage: ${error.message}</div>`;
+                }
+            } else {
+                storageStatus.innerHTML = '<div class="step">No session storage data found</div>';
+            }
+        }
+
+        function clearSessionStorage() {
+            sessionStorage.removeItem('excelScraperProgress');
+            checkSessionStorage();
+        }
+
+        // Check session storage every 2 seconds
+        setInterval(checkSessionStorage, 2000);
+        
+        // Initial check
+        checkSessionStorage();
+    </script>
+</body>
+</html>

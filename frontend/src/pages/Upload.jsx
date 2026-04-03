@@ -705,8 +705,13 @@ const Upload = () => {
                   <li>• Email Address</li>
                   <li>• Website URL</li>
                   <li>• Address</li>
+                  <li>• Category</li>
+                  <li>• City</li>
                 </ul>
               </div>
+            </div>
+            <div className="mt-3 text-xs text-blue-700">
+              <strong>Note:</strong> Category and City columns will be used for filtering companies in the dashboard.
             </div>
           </div>
         </div>

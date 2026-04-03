@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Bold, Italic, Underline, Link, Smile, Paperclip, Send, AlignLeft, AlignCenter, AlignRight, List, ListOrdered } from 'lucide-react';
+import { Bold, Italic, Underline, Link, Smile, Paperclip, Send, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Filter, Search, X } from 'lucide-react';
 
 const IndividualMessage = () => {
   const [formData, setFormData] = useState({
@@ -20,11 +20,12 @@ const IndividualMessage = () => {
   // Reviews modal state
   const [showReviews, setShowReviews] = useState(false);
   
-  // Category filtering state
-  const [selectedCategory, setSelectedCategory] = useState('all');
-  
-  // City filtering state
-  const [selectedCity, setSelectedCity] = useState('all');
+  // Manual filter state
+  const [manualFilters, setManualFilters] = useState({
+    category: 'all',
+    city: 'all',
+    search: ''
+  });
   
   // Email filtering state
   const [emailFilter, setEmailFilter] = useState('all'); // 'all', 'with_email', 'without_email'
@@ -140,20 +141,26 @@ const IndividualMessage = () => {
     return wordCount <= 20; // Changed from 10 to 20 words
   }).filter(company => {
     // Category filtering
-    const categoryMatch = selectedCategory === 'all' || (
-      (company.category && company.category.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-      (company.businessCategory && company.businessCategory.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-      (company.industry && company.industry.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-      (company.sector && company.sector.toLowerCase().trim() === selectedCategory.toLowerCase().trim()) ||
-      (company.type && company.type.toLowerCase().trim() === selectedCategory.toLowerCase().trim())
+    const categoryMatch = manualFilters.category === 'all' || (
+      (company.category && company.category.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+      (company.businessCategory && company.businessCategory.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+      (company.industry && company.industry.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+      (company.sector && company.sector.toLowerCase().trim() === manualFilters.category.toLowerCase().trim()) ||
+      (company.type && company.type.toLowerCase().trim() === manualFilters.category.toLowerCase().trim())
     );
     
     // City filtering
-    const cityMatch = selectedCity === 'all' || (
-      (company.city && company.city.toLowerCase().trim() === selectedCity.toLowerCase().trim()) ||
-      (company.location && company.location.toLowerCase().trim() === selectedCity.toLowerCase().trim()) ||
-      (company.address && company.address.trim() && company.address.toLowerCase().includes(selectedCity.toLowerCase().trim()))
+    const cityMatch = manualFilters.city === 'all' || (
+      (company.city && company.city.toLowerCase().trim() === manualFilters.city.toLowerCase().trim()) ||
+      (company.location && company.location.toLowerCase().trim() === manualFilters.city.toLowerCase().trim()) ||
+      (company.address && company.address.trim() && company.address.toLowerCase().includes(manualFilters.city.toLowerCase().trim()))
     );
+    
+    // Search filtering
+    const searchMatch = !manualFilters.search || manualFilters.search.trim() === '' ||
+      company.company.toLowerCase().includes(manualFilters.search.toLowerCase()) ||
+      (company.email && company.email.toLowerCase().includes(manualFilters.search.toLowerCase())) ||
+      (company.address && company.address.toLowerCase().includes(manualFilters.search.toLowerCase()));
     
     // Email filtering
     const emailMatch = emailFilter === 'all' || (
@@ -163,7 +170,7 @@ const IndividualMessage = () => {
     );
     
     
-    return categoryMatch && cityMatch && emailMatch;
+    return categoryMatch && cityMatch && searchMatch && emailMatch;
   });
 
   // Auto-populate form when company is selected
@@ -201,6 +208,31 @@ const IndividualMessage = () => {
     setBulkMode(!bulkMode);
     setSelectedCompanies([]);
     setSelectedCompany(null);
+  };
+
+  // Handle manual filter changes
+  const handleManualFiltersChange = (filters) => {
+    setManualFilters(filters);
+    setSelectedCompany(null); // Clear selection when filters change
+    setSelectedCompanies([]); // Clear bulk selections when filters change
+  };
+
+  // Handle manual search changes
+  const handleManualSearchChange = (search) => {
+    setManualFilters(prev => ({ ...prev, search }));
+    setSelectedCompany(null); // Clear selection when search changes
+    setSelectedCompanies([]); // Clear bulk selections when search changes
+  };
+
+  // Clear all manual filters
+  const clearManualFilters = () => {
+    setManualFilters({
+      category: 'all',
+      city: 'all',
+      search: ''
+    });
+    setSelectedCompany(null);
+    setSelectedCompanies([]);
   };
 
   const handleChange = (e) => {
@@ -481,79 +513,128 @@ const IndividualMessage = () => {
         {/* Company Selection */}
         {!bulkMode ? (
           <div className="mb-6">
-            {/* Filters Section - Column Layout */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              {/* Category Filter */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700">
-                    Filter by Category
-                  </label>
-                  <button
-                    type="button"
-                    onClick={refreshCompanies}
-                    className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-                  >
-                    Refresh Companies
-                  </button>
+            {/* Manual Filters */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <Filter className="w-5 h-5 text-gray-600" />
+                  <h3 className="text-lg font-semibold text-gray-800">Filters</h3>
                 </div>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => {
-                    setSelectedCategory(e.target.value);
-                    setSelectedCompany(null); // Clear selection when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Categories</option>
-                  {businessCategories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
+                {(manualFilters.category !== 'all' || manualFilters.city !== 'all' || manualFilters.search.trim() !== '') && (
+                  <button
+                    onClick={clearManualFilters}
+                    className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Clear All</span>
+                  </button>
+                )}
               </div>
-              
-              {/* City Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Filter by City
-                </label>
-                <select
-                  value={selectedCity}
-                  onChange={(e) => {
-                    setSelectedCity(e.target.value);
-                    setSelectedCompany(null); // Clear selection when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Cities</option>
-                  {indiaCities.map(city => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search companies..."
+                    value={manualFilters.search}
+                    onChange={(e) => handleManualSearchChange(e.target.value)}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                  />
+                </div>
+
+                {/* Category Filter */}
+                <div>
+                  <select
+                    value={manualFilters.category}
+                    onChange={(e) => handleManualFiltersChange({ ...manualFilters, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                  >
+                    <option value="all">All Categories</option>
+                    {businessCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* City Filter */}
+                <div>
+                  <select
+                    value={manualFilters.city}
+                    onChange={(e) => handleManualFiltersChange({ ...manualFilters, city: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                  >
+                    <option value="all">All Cities</option>
+                    {indiaCities.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              
-              {/* Email Filter */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Filter by Email
-                </label>
-                <select
-                  value={emailFilter}
-                  onChange={(e) => {
-                    setEmailFilter(e.target.value);
-                    setSelectedCompany(null); // Clear selection when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Companies</option>
-                  <option value="with_email">📧 With Email</option>
-                  <option value="without_email">📱 Without Email</option>
-                </select>
-              </div>
+
+              {/* Active Filters Display */}
+              {(manualFilters.category !== 'all' || manualFilters.city !== 'all' || manualFilters.search.trim() !== '') && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {manualFilters.search && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+                      Search: "{manualFilters.search}"
+                    </span>
+                  )}
+                  {manualFilters.category !== 'all' && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                      Category: {manualFilters.category}
+                    </span>
+                  )}
+                  {manualFilters.city !== 'all' && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800">
+                      City: {manualFilters.city}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             
+            {/* Email Filter */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Email
+              </label>
+              <select
+                value={emailFilter}
+                onChange={(e) => {
+                  setEmailFilter(e.target.value);
+                  setSelectedCompany(null); // Clear selection when filter changes
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Companies</option>
+                <option value="with_email">📧 With Email</option>
+                <option value="without_email">📱 Without Email</option>
+              </select>
+            </div>
+            
+            {/* Active Email Filter */}
+            {emailFilter !== 'all' && (
+              <div className="mt-2">
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800">
+                  Email: {emailFilter === 'with_email' ? 'With Email' : 'Without Email'}
+                  <button
+                    onClick={() => setEmailFilter('all')}
+                    className="ml-2 text-orange-600 hover:text-orange-800 text-sm"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            )}
+            
             {/* Company Selection Table */}
-            <div>
+            <div className="mt-4">
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-sm font-medium text-gray-700">
                   Select Company (Optional)
@@ -621,70 +702,128 @@ const IndividualMessage = () => {
           </div>
         ) : (
           <div className="mb-6">
-            {/* Filters Section - Column Layout for Bulk Mode */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-              {/* Category Filter for Bulk Mode */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Filter by Category
-                </label>
-                <select
-                  value={selectedCategory}
-                  onChange={(e) => {
-                    setSelectedCategory(e.target.value);
-                    setSelectedCompanies([]); // Clear selections when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Categories</option>
-                  {businessCategories.map(category => (
-                    <option key={category} value={category}>{category}</option>
-                  ))}
-                </select>
+            {/* Manual Filters for Bulk Mode */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <Filter className="w-5 h-5 text-gray-600" />
+                  <h3 className="text-lg font-semibold text-gray-800">Filters</h3>
+                </div>
+                {(manualFilters.category !== 'all' || manualFilters.city !== 'all' || manualFilters.search.trim() !== '') && (
+                  <button
+                    onClick={clearManualFilters}
+                    className="flex items-center space-x-1 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Clear All</span>
+                  </button>
+                )}
               </div>
-              
-              {/* City Filter for Bulk Mode */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Filter by City
-                </label>
-                <select
-                  value={selectedCity}
-                  onChange={(e) => {
-                    setSelectedCity(e.target.value);
-                    setSelectedCompanies([]); // Clear selections when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Cities</option>
-                  {indiaCities.map(city => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Search Input */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search companies..."
+                    value={manualFilters.search}
+                    onChange={(e) => handleManualSearchChange(e.target.value)}
+                    className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
+                  />
+                </div>
+
+                {/* Category Filter */}
+                <div>
+                  <select
+                    value={manualFilters.category}
+                    onChange={(e) => handleManualFiltersChange({ ...manualFilters, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                  >
+                    <option value="all">All Categories</option>
+                    {businessCategories.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* City Filter */}
+                <div>
+                  <select
+                    value={manualFilters.city}
+                    onChange={(e) => handleManualFiltersChange({ ...manualFilters, city: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
+                  >
+                    <option value="all">All Cities</option>
+                    {indiaCities.map((city) => (
+                      <option key={city} value={city}>
+                        {city}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
-              
-              {/* Email Filter for Bulk Mode */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Filter by Email
-                </label>
-                <select
-                  value={emailFilter}
-                  onChange={(e) => {
-                    setEmailFilter(e.target.value);
-                    setSelectedCompanies([]); // Clear selections when filter changes
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="all">All Companies</option>
-                  <option value="with_email">📧 With Email</option>
-                  <option value="without_email">📱 Without Email</option>
-                </select>
-              </div>
+
+              {/* Active Filters Display */}
+              {(manualFilters.category !== 'all' || manualFilters.city !== 'all' || manualFilters.search.trim() !== '') && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {manualFilters.search && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+                      Search: "{manualFilters.search}"
+                    </span>
+                  )}
+                  {manualFilters.category !== 'all' && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
+                      Category: {manualFilters.category}
+                    </span>
+                  )}
+                  {manualFilters.city !== 'all' && (
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-sm bg-purple-100 text-purple-800">
+                      City: {manualFilters.city}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
             
+            {/* Email Filter for Bulk Mode */}
+            <div className="mt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Filter by Email
+              </label>
+              <select
+                value={emailFilter}
+                onChange={(e) => {
+                  setEmailFilter(e.target.value);
+                  setSelectedCompanies([]); // Clear selections when filter changes
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Companies</option>
+                <option value="with_email">📧 With Email</option>
+                <option value="without_email">📱 Without Email</option>
+              </select>
+            </div>
+            
+            {/* Active Email Filter for Bulk Mode */}
+            {emailFilter !== 'all' && (
+              <div className="mt-2">
+                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange-800">
+                  Email: {emailFilter === 'with_email' ? 'With Email' : 'Without Email'}
+                  <button
+                    onClick={() => setEmailFilter('all')}
+                    className="ml-2 text-orange-600 hover:text-orange-800 text-sm"
+                  >
+                    ×
+                  </button>
+                </span>
+              </div>
+            )}
+            
             {/* Company Selection Table for Bulk Mode */}
-            <div>
+            <div className="mt-4">
               <div className="flex justify-between items-center mb-2">
                 <label className="block text-sm font-medium text-gray-700">
                   Select Companies ({selectedCompanies.length} selected)

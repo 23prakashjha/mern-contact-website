@@ -30,8 +30,72 @@ function ExcelScraper() {
   const [failedCompanies, setFailedCompanies] = useState(0);
   const [currentCompany, setCurrentCompany] = useState('');
 
+  // Persistent progress tracking helpers
+  const saveProgressToSession = () => {
+    const progressData = {
+      progress,
+      currentStep,
+      estimatedTimeRemaining,
+      processingStartTime,
+      totalCompanies,
+      scrapedCompanies,
+      failedCompanies,
+      currentCompany,
+      processing,
+      uploading,
+      file: file ? { name: file.name, size: file.size } : null,
+      result,
+      timestamp: Date.now()
+    };
+    sessionStorage.setItem('excelScraperProgress', JSON.stringify(progressData));
+  };
+
+  const loadProgressFromSession = () => {
+    try {
+      const savedData = sessionStorage.getItem('excelScraperProgress');
+      if (savedData) {
+        const progressData = JSON.parse(savedData);
+        const timeSinceLastUpdate = Date.now() - progressData.timestamp;
+        
+        // Only restore if data is less than 5 minutes old
+        if (timeSinceLastUpdate < 5 * 60 * 1000 && progressData.processing) {
+          return progressData;
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to load progress from session:', error);
+    }
+    return null;
+  };
+
+  const clearProgressFromSession = () => {
+    sessionStorage.removeItem('excelScraperProgress');
+  };
+
   // Automatically fetch processed data when page loads or when result changes
   useEffect(() => {
+    // Try to restore progress from session storage
+    const savedProgress = loadProgressFromSession();
+    if (savedProgress) {
+      // Restore processing state
+      setProgress(savedProgress.progress);
+      setCurrentStep(savedProgress.currentStep);
+      setEstimatedTimeRemaining(savedProgress.estimatedTimeRemaining);
+      setProcessingStartTime(savedProgress.processingStartTime);
+      setTotalCompanies(savedProgress.totalCompanies);
+      setScrapedCompanies(savedProgress.scrapedCompanies);
+      setFailedCompanies(savedProgress.failedCompanies);
+      setCurrentCompany(savedProgress.currentCompany);
+      setUploading(savedProgress.uploading);
+      setProcessing(savedProgress.processing);
+      setResult(savedProgress.result);
+      
+      // Clear the session data after restoring
+      setTimeout(() => {
+        clearProgressFromSession();
+      }, 1000);
+    }
+
     fetchHistory();
 
     // Check if there's a recent processed file to display
@@ -82,6 +146,9 @@ function ExcelScraper() {
   // Progress tracking effect
   useEffect(() => {
     if (processing && processingStartTime) {
+      // Save progress to session storage
+      saveProgressToSession();
+      
       const interval = setInterval(() => {
         const elapsed = (Date.now() - processingStartTime) / 1000; // seconds
         
@@ -147,11 +214,16 @@ function ExcelScraper() {
             setEstimatedTimeRemaining(0);
             setScrapedCompanies(total - failedCount);
             setFailedCompanies(failedCount);
+            clearProgressFromSession(); // Clear progress when complete
           }, 1000);
         }
       }, 1000);
       
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+        // Save final state before cleanup
+        saveProgressToSession();
+      };
     } else {
       setProgress(0);
       setCurrentStep('');
@@ -160,8 +232,9 @@ function ExcelScraper() {
       setScrapedCompanies(0);
       setFailedCompanies(0);
       setCurrentCompany('');
+      clearProgressFromSession(); // Clear progress when not processing
     }
-  }, [processing, processingStartTime, totalCompanies]);
+  }, [processing, processingStartTime, totalCompanies, currentCompany, file, result, uploading]);
 
   const onDrop = useCallback((acceptedFiles) => {
     if (acceptedFiles.length > 0) {
@@ -266,6 +339,7 @@ function ExcelScraper() {
       setTimeout(() => {
         setProcessing(false);
         setProcessingStartTime(null);
+        clearProgressFromSession(); // Clear progress when processing completes
       }, 2000);
     }
   };
@@ -488,7 +562,7 @@ function ExcelScraper() {
 
           {/* Progress Display */}
           {processing && (
-            <div className="mt-6 max-w-2xl mx-auto">
+            <div className="mt-6 max-w-6xl mx-auto">
               <div className="glass-effect p-6 rounded-xl">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-gray-900">Processing Progress</h3>
@@ -603,7 +677,7 @@ function ExcelScraper() {
 
         {/* Results */}
         {result && (
-          <section className="max-w-2xl mx-auto">
+          <section className="max-w-6xl mx-auto">
             <div className="glass-effect p-6 rounded-xl">
               <div className="flex items-center space-x-2 mb-4">
                 <CheckCircle className="w-6 h-6 text-green-500" />

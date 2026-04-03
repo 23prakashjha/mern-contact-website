@@ -59,6 +59,8 @@ const companySchema = new mongoose.Schema({
     email: { type: String, required: false },
     website: { type: String },
     address: { type: String },
+    category: { type: String },
+    city: { type: String },
     message: { type: String },
     status: { 
         type: String, 
@@ -732,7 +734,22 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             if (row['rllt_detail1']) {
                 address = extractAddress(String(row['rllt_detail1'] || ''));
             } else {
-                address = row['Address'] || row.address || row.Address || row.Location || row.location || row.City || row.city || '';
+                address = row['Address'] || row.address || row.Address || row.Location || row.location || '';
+            }
+
+            // Extract category
+            const category = row['Category'] || row.category || row.Type || row.type || row.Industry || row.industry || '';
+
+            // Extract city from address or separate city column
+            let city = '';
+            if (row['City'] || row.city) {
+                city = row['City'] || row.city;
+            } else if (address) {
+                // Try to extract city from address
+                const cityMatch = address.match(/,?\s*([A-Za-z\s]+),?\s*[A-Z]{2,}|\b([A-Za-z\s]+)\b,?\s*[A-Z]{2,}/);
+                if (cityMatch) {
+                    city = cityMatch[1] || cityMatch[2];
+                }
             }
 
             // Debug logging for each row
@@ -768,6 +785,8 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
                 email: email.trim(),
                 website: (row.yyljef_URL1 || row.Website || row.website || '').trim(),
                 address: address.trim(),
+                category: category.trim(),
+                city: city.trim(),
                 message: `Hello ${companyName.trim()}, we would like to connect with you...`,
                 status: 'pending'
             });
@@ -931,14 +950,60 @@ app.post('/api/companies', async (req, res) => {
     }
 });
 
-// Get all companies with their status
+// Get all companies with their status and filtering support
 app.get('/api/companies', async (req, res) => {
     try {
-        const companies = await Company.find().sort({ createdAt: -1 });
+        const { category, city, search } = req.query;
+        let filter = {};
+        
+        // Add category filter if provided
+        if (category && category !== 'all') {
+            filter.category = category;
+        }
+        
+        // Add city filter if provided
+        if (city && city !== 'all') {
+            filter.city = city;
+        }
+        
+        // Add search filter if provided
+        if (search && search.trim()) {
+            filter.$or = [
+                { company: { $regex: search, $options: 'i' } },
+                { email: { $regex: search, $options: 'i' } },
+                { address: { $regex: search, $options: 'i' } }
+            ];
+        }
+        
+        const companies = await Company.find(filter).sort({ createdAt: -1 });
         res.json(companies);
     } catch (error) {
         console.error('Fetch error:', error);
         res.status(500).json({ error: 'Error fetching companies' });
+    }
+});
+
+// Get unique categories for filter dropdown
+app.get('/api/categories', async (req, res) => {
+    try {
+        const categories = await Company.distinct('category');
+        const filteredCategories = categories.filter(cat => cat && cat.trim() !== '');
+        res.json(filteredCategories.sort());
+    } catch (error) {
+        console.error('Fetch categories error:', error);
+        res.status(500).json({ error: 'Error fetching categories' });
+    }
+});
+
+// Get unique cities for filter dropdown
+app.get('/api/cities', async (req, res) => {
+    try {
+        const cities = await Company.distinct('city');
+        const filteredCities = cities.filter(city => city && city.trim() !== '');
+        res.json(filteredCities.sort());
+    } catch (error) {
+        console.error('Fetch cities error:', error);
+        res.status(500).json({ error: 'Error fetching cities' });
     }
 });
 
