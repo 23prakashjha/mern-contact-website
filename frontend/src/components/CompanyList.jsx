@@ -226,7 +226,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                           <div key={emailIndex} className="flex items-center gap-1">
                             <Mail className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                             <span className="text-blue-600">
-                              {trimmedEmail} {isValidEmail(trimmedEmail) ? '✅' : '❌'}
+                              {trimmedEmail} {isValidEmail(trimmedEmail)}
                             </span>
                           </div>
                         );
@@ -276,32 +276,6 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                   <div className="flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-gray-400" />
                     <span className="text-gray-400 italic">No address</span>
-                  </div>
-                )}
-              </td>
-              <td className="px-4 py-3 text-sm">
-                {company.category && company.category.trim() ? (
-                  <div className="flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
-                    <span className="text-orange-600 font-medium">{company.category}</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <Tag className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-gray-400 italic">No Category</span>
-                  </div>
-                )}
-              </td>
-              <td className="px-4 py-3 text-sm">
-                {company.city && company.city.trim() ? (
-                  <div className="flex items-center gap-1">
-                    <Map className="w-3.5 h-3.5 text-teal-500 flex-shrink-0" />
-                    <span className="text-teal-600 font-medium">{company.city}</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1">
-                    <Map className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-gray-400 italic">No City</span>
                   </div>
                 )}
               </td>

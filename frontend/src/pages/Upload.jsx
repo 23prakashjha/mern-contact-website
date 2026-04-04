@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, AlertCircle, Loader2, Globe, Upload as UploadIcon, FileSpreadsheet } from 'lucide-react';
+import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, AlertCircle, Loader2, Globe, Upload as UploadIcon, FileSpreadsheet, History, X, Calendar, Clock, File, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 
 const Upload = () => {
   const [loading, setLoading] = useState(false);
@@ -14,8 +14,68 @@ const Upload = () => {
   const [selectedFile, setSelectedFile] = useState(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [uploadHistory, setUploadHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySearchTerm, setHistorySearchTerm] = useState('');
+  const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
+  const [historyItemsPerPage] = useState(10);
 
   const API_BASE_URL = 'http://localhost:5000/api';
+
+  // Fetch upload history
+  const fetchUploadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await axios.get('http://localhost:5000/api/excel-scraper/history');
+      setUploadHistory(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch upload history:', error);
+      setUploadHistory([]);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  // Open history modal and fetch data
+  const openHistoryModal = async () => {
+    setShowHistoryModal(true);
+    await fetchUploadHistory();
+  };
+
+  // Filter history based on search term
+  const filteredHistory = uploadHistory.filter(item => {
+    if (!historySearchTerm) return true;
+    const searchLower = historySearchTerm.toLowerCase();
+    return (
+      (item.originalFilename && item.originalFilename.toLowerCase().includes(searchLower)) ||
+      (item.processedFilename && item.processedFilename.toLowerCase().includes(searchLower)) ||
+      (item.status && item.status.toLowerCase().includes(searchLower))
+    );
+  });
+
+  // Pagination for history
+  const historyIndexOfLastItem = historyCurrentPage * historyItemsPerPage;
+  const historyIndexOfFirstItem = historyIndexOfLastItem - historyItemsPerPage;
+  const historyCurrentItems = filteredHistory.slice(historyIndexOfFirstItem, historyIndexOfLastItem);
+  const historyTotalPages = Math.ceil(filteredHistory.length / historyItemsPerPage);
+
+  const historyPaginate = (pageNumber) => setHistoryCurrentPage(pageNumber);
+  const historyGoToPreviousPage = () => setHistoryCurrentPage(prev => Math.max(prev - 1, 1));
+  const historyGoToNextPage = () => setHistoryCurrentPage(prev => Math.min(prev + 1, historyTotalPages));
+
+  // Format file size
+  const formatFileSize = (bytes) => {
+    if (!bytes) return 'N/A';
+    const mb = bytes / (1024 * 1024);
+    return mb.toFixed(2) + ' MB';
+  };
+
+  // Format date
+  const formatDate = (dateString) => {
+    if (!dateString) return 'N/A';
+    return new Date(dateString).toLocaleString();
+  };
 
   // Helper function to truncate long text and handle | character
   const addLineBreaks = (text, maxLength = 20) => {
@@ -50,6 +110,37 @@ const Upload = () => {
   const handleFileSelect = async (event) => {
     const file = event.target.files[0];
     if (file) {
+      // Debug: Log current state
+      console.log('=== DUPLICATE CHECK DEBUG ===');
+      console.log('Current lastProcessedFile:', lastProcessedFile);
+      console.log('Selected file:', file.name, 'Size:', file.size);
+      console.log('lastProcessedFile exists:', !!lastProcessedFile);
+      
+      if (lastProcessedFile) {
+        console.log('lastProcessedFile.processedFilename:', lastProcessedFile.processedFilename);
+        console.log('lastProcessedFile.size:', lastProcessedFile.size);
+        console.log('Filename match:', lastProcessedFile.processedFilename === file.name);
+        console.log('Size match:', lastProcessedFile.size === file.size);
+      }
+      
+      // Check if this is the same file as the last processed file
+      if (lastProcessedFile && lastProcessedFile.processedFilename === file.name && lastProcessedFile.size === file.size) {
+        console.log('🔄 DUPLICATE FILE DETECTED!');
+        const shouldProceed = window.confirm(
+          `You've already uploaded "${file.name}" (${(file.size / 1024 / 1024).toFixed(2)} MB).\n\n` +
+          `This file was processed on ${new Date(lastProcessedFile.processedAt).toLocaleString()}.\n\n` +
+          `Do you want to upload it again? This may create duplicate entries.`
+        );
+        
+        if (!shouldProceed) {
+          console.log('❌ User cancelled duplicate upload');
+          return;
+        }
+        console.log('✅ User chose to proceed with duplicate upload');
+      } else {
+        console.log('🆕 No duplicate detected or lastProcessedFile is null');
+      }
+      
       // Validate file type
       const validTypes = [
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
@@ -152,6 +243,37 @@ const Upload = () => {
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
+      
+      // Debug: Log current state
+      console.log('=== DRAG-DROP DUPLICATE CHECK DEBUG ===');
+      console.log('Current lastProcessedFile:', lastProcessedFile);
+      console.log('Dropped file:', file.name, 'Size:', file.size);
+      console.log('lastProcessedFile exists:', !!lastProcessedFile);
+      
+      if (lastProcessedFile) {
+        console.log('lastProcessedFile.processedFilename:', lastProcessedFile.processedFilename);
+        console.log('lastProcessedFile.size:', lastProcessedFile.size);
+        console.log('Filename match:', lastProcessedFile.processedFilename === file.name);
+        console.log('Size match:', lastProcessedFile.size === file.size);
+      }
+      
+      // Check if this is the same file as the last processed file
+      if (lastProcessedFile && lastProcessedFile.processedFilename === file.name && lastProcessedFile.size === file.size) {
+        console.log('🔄 DUPLICATE FILE DETECTED VIA DRAG-DROP!');
+        const shouldProceed = window.confirm(
+          `You've already uploaded "${file.name}" (${(file.size / 1024 / 1024).toFixed(2)} MB).\n\n` +
+          `This file was processed on ${new Date(lastProcessedFile.processedAt).toLocaleString()}.\n\n` +
+          `Do you want to upload it again? This may create duplicate entries.`
+        );
+        
+        if (!shouldProceed) {
+          console.log('❌ User cancelled duplicate upload via drag-drop');
+          return;
+        }
+        console.log('✅ User chose to proceed with duplicate upload via drag-drop');
+      } else {
+        console.log('🆕 No duplicate detected via drag-drop or lastProcessedFile is null');
+      }
       
       // Validate file type
       const validTypes = [
@@ -716,11 +838,205 @@ const Upload = () => {
           </div>
         </div>
 
-      
+        {/* Upload History Button */}
+        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-gray-100">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-lg">
+                <History className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Upload History</h3>
+                <p className="text-sm text-gray-600">View all your previous file uploads</p>
+              </div>
+            </div>
+            <button
+              onClick={openHistoryModal}
+              className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all duration-300"
+            >
+              <History className="w-4 h-4 mr-2" />
+              View History
+            </button>
+          </div>
+        </div>
+
+        {/* History Modal */}
+        {showHistoryModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+              {/* Modal Header */}
+              <div className="bg-gradient-to-r from-purple-500 to-indigo-600 p-6 text-white">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <History className="w-6 h-6" />
+                    <div>
+                      <h2 className="text-2xl font-bold">Upload History</h2>
+                      <p className="text-purple-100 text-sm mt-1">Complete history of all file uploads</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowHistoryModal(false)}
+                    className="p-2 hover:bg-white/20 rounded-lg transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                {/* Search Bar */}
+                <div className="mb-6">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search upload history..."
+                      value={historySearchTerm}
+                      onChange={(e) => {
+                        setHistorySearchTerm(e.target.value);
+                        setHistoryCurrentPage(1);
+                      }}
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* History Content */}
+                {historyLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+                  </div>
+                ) : filteredHistory.length === 0 ? (
+                  <div className="text-center py-12">
+                    <File className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-500">
+                      {historySearchTerm ? 'No uploads found matching your search' : 'No upload history available'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {historyCurrentItems.map((item, index) => (
+                      <div key={index} className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center space-x-2 mb-2">
+                              <FileSpreadsheet className="w-5 h-5 text-green-600" />
+                              <h4 className="font-semibold text-gray-800">
+                                {item.originalFilename || item.processedFilename || 'Unknown File'}
+                              </h4>
+                              {item.status && (
+                                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                  item.status === 'completed' ? 'bg-green-100 text-green-800' :
+                                  item.status === 'processing' ? 'bg-yellow-100 text-yellow-800' :
+                                  item.status === 'failed' ? 'bg-red-100 text-red-800' :
+                                  'bg-gray-100 text-gray-800'
+                                }`}>
+                                  {item.status}
+                                </span>
+                              )}
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
+                              <div className="flex items-center space-x-2">
+                                <Calendar className="w-4 h-4" />
+                                <span>Uploaded: {formatDate(item.uploadedAt || item.processedAt)}</span>
+                              </div>
+                              {item.size && (
+                                <div className="flex items-center space-x-2">
+                                  <FileText className="w-4 h-4" />
+                                  <span>Size: {formatFileSize(item.size)}</span>
+                                </div>
+                              )}
+                              {item.recordCount && (
+                                <div className="flex items-center space-x-2">
+                                  <Database className="w-4 h-4" />
+                                  <span>Records: {item.recordCount}</span>
+                                </div>
+                              )}
+                              {item.processedFilename && item.processedFilename !== item.originalFilename && (
+                                <div className="flex items-center space-x-2">
+                                  <RefreshCw className="w-4 h-4" />
+                                  <span>Processed: {item.processedFilename}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Modal Footer with Pagination */}
+              {filteredHistory.length > historyItemsPerPage && (
+                <div className="border-t border-gray-200 p-4 bg-gray-50">
+                  <div className="flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0">
+                    <div className="text-gray-700 text-sm">
+                      <span className="font-bold text-purple-600">{historyIndexOfFirstItem + 1}</span> to{' '}
+                      <span className="font-bold text-purple-600">{Math.min(historyIndexOfLastItem, filteredHistory.length)}</span> of{' '}
+                      <span className="font-bold text-purple-600">{filteredHistory.length}</span> uploads
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={historyGoToPreviousPage}
+                        disabled={historyCurrentPage === 1}
+                        className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      
+                      <div className="flex space-x-1">
+                        {[...Array(historyTotalPages)].map((_, index) => {
+                          const pageNumber = index + 1;
+                          const isActive = pageNumber === historyCurrentPage;
+                          const isNearCurrent = Math.abs(pageNumber - historyCurrentPage) <= 2 || pageNumber === 1 || pageNumber === historyTotalPages;
+                          
+                          if (!isNearCurrent && pageNumber !== 1 && pageNumber !== historyTotalPages) {
+                            if (pageNumber === historyCurrentPage - 3 || pageNumber === historyCurrentPage + 3) {
+                              return (
+                                <span key={pageNumber} className="px-2 py-2 text-gray-500 text-sm">
+                                  ...
+                                </span>
+                              );
+                            }
+                            return null;
+                          }
+                          
+                          return (
+                            <button
+                              key={pageNumber}
+                              onClick={() => historyPaginate(pageNumber)}
+                              className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                                isActive
+                                  ? 'bg-purple-600 text-white'
+                                  : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                              }`}
+                            >
+                              {pageNumber}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      
+                      <button
+                        onClick={historyGoToNextPage}
+                        disabled={historyCurrentPage === historyTotalPages}
+                        className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
   );
 };
-
 export default Upload;
