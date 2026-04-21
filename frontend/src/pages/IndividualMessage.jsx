@@ -35,6 +35,43 @@ const IndividualMessage = () => {
   // Message toolbar state
   const [showToolbar, setShowToolbar] = useState(true);
 
+  // Handle keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const textarea = document.querySelector('textarea[name="message"]');
+      if (!textarea || document.activeElement !== textarea) return;
+      
+      // Check for Ctrl/Cmd key combinations
+      if (e.ctrlKey || e.metaKey) {
+        switch (e.key.toLowerCase()) {
+          case 'b':
+            e.preventDefault();
+            applyFormat('bold');
+            break;
+          case 'i':
+            e.preventDefault();
+            applyFormat('italic');
+            break;
+          case 'u':
+            e.preventDefault();
+            applyFormat('underline');
+            break;
+          case 'l':
+            e.preventDefault();
+            insertLink();
+            break;
+          case 'k':
+            e.preventDefault();
+            insertLink();
+            break;
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [formData.message]); // Include formData.message to ensure latest state
+
   // India cities list (same as in History page)
   const indiaCities = [
     'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad',
@@ -312,7 +349,7 @@ const IndividualMessage = () => {
     }
   };
 
-  // Message toolbar functions - Text Selection Based
+  // Message toolbar functions - Enhanced Text Selection Based
   const applyFormat = (format) => {
     const textarea = document.querySelector('textarea[name="message"]');
     if (!textarea) return;
@@ -321,23 +358,72 @@ const IndividualMessage = () => {
     const end = textarea.selectionEnd;
     const selectedText = formData.message.substring(start, end);
     
+    // If no text selected, either insert formatting markers or show alert
     if (selectedText.length === 0) {
-      // No text selected, show alert
-      alert('Please select text first to apply formatting');
-      return;
+      // For formatting that requires text, show a more helpful message
+      if (['bold', 'italic', 'underline', 'list', 'numbered_list'].includes(format)) {
+        // Insert sample text with formatting for demonstration
+        let sampleText = '';
+        switch (format) {
+          case 'bold':
+            sampleText = '**Bold text**';
+            break;
+          case 'italic':
+            sampleText = '*Italic text*';
+            break;
+          case 'underline':
+            sampleText = '__Underlined text__';
+            break;
+          case 'list':
+            sampleText = '\n• List item';
+            break;
+          case 'numbered_list':
+            sampleText = '\n1. Numbered item';
+            break;
+        }
+        
+        const newMessage = formData.message.substring(0, start) + sampleText + formData.message.substring(end);
+        setFormData(prev => ({ ...prev, message: newMessage }));
+        
+        // Position cursor appropriately
+        setTimeout(() => {
+          textarea.focus();
+          if (format === 'list' || format === 'numbered_list') {
+            textarea.setSelectionRange(start + sampleText.length - 9, start + sampleText.length); // Select the item text
+          } else {
+            textarea.setSelectionRange(start + 2, start + sampleText.length - 2); // Select the formatted text
+          }
+        }, 0);
+        return;
+      }
     }
     
     let formattedText = '';
     
     switch (format) {
       case 'bold':
-        formattedText = `**${selectedText}**`;
+        // Check if already bold, remove formatting
+        if (selectedText.startsWith('**') && selectedText.endsWith('**')) {
+          formattedText = selectedText.slice(2, -2);
+        } else {
+          formattedText = `**${selectedText}**`;
+        }
         break;
       case 'italic':
-        formattedText = `*${selectedText}*`;
+        // Check if already italic, remove formatting
+        if (selectedText.startsWith('*') && selectedText.endsWith('*') && !selectedText.startsWith('**')) {
+          formattedText = selectedText.slice(1, -1);
+        } else {
+          formattedText = `*${selectedText}*`;
+        }
         break;
       case 'underline':
-        formattedText = `__${selectedText}__`;
+        // Check if already underlined, remove formatting
+        if (selectedText.startsWith('__') && selectedText.endsWith('__')) {
+          formattedText = selectedText.slice(2, -2);
+        } else {
+          formattedText = `__${selectedText}__`;
+        }
         break;
       case 'list':
         formattedText = `\n• ${selectedText}`;
@@ -369,7 +455,28 @@ const IndividualMessage = () => {
     const selectedText = formData.message.substring(start, end);
     
     if (selectedText.length === 0) {
-      alert('Please select text first to apply alignment');
+      // Insert alignment marker with sample text
+      let alignmentText = '';
+      switch (alignment) {
+        case 'center':
+          alignmentText = '\n→ Centered text';
+          break;
+        case 'right':
+          alignmentText = '\n← Right aligned text';
+          break;
+        case 'left':
+        default:
+          alignmentText = '\n← Left aligned text';
+          break;
+      }
+      
+      const newMessage = formData.message.substring(0, start) + alignmentText + formData.message.substring(end);
+      setFormData(prev => ({ ...prev, message: newMessage }));
+      
+      setTimeout(() => {
+        textarea.focus();
+        textarea.setSelectionRange(start + alignmentText.length - 15, start + alignmentText.length); // Select the sample text
+      }, 0);
       return;
     }
     
@@ -405,9 +512,9 @@ const IndividualMessage = () => {
     const end = textarea.selectionEnd;
     const selectedText = formData.message.substring(start, end);
     
-    const url = prompt('Enter URL:');
+    const url = prompt('Enter URL:', selectedText.startsWith('http') ? selectedText : 'https://');
     if (url) {
-      const linkText = selectedText || url;
+      const linkText = selectedText || 'Link text';
       const formattedLink = `[${linkText}](${url})`;
       const newMessage = formData.message.substring(0, start) + formattedLink + formData.message.substring(end);
       setFormData(prev => ({ ...prev, message: newMessage }));
@@ -677,12 +784,20 @@ const IndividualMessage = () => {
                           <td className="px-3 py-2 text-sm font-medium text-gray-900" title={truncateCompanyName(normalizeCompanyName(company.company))}>
                             {truncateCompanyName(normalizeCompanyName(company.company))}
                           </td>
-                          <td className="px-3 py-2 text-sm text-gray-600">{company.phone || '-'}</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">{company.phone ? company.phone.split(',')[0].trim() : '-'}</td>
                           <td className="px-3 py-2 text-sm">
                             {company.email && company.email.trim() !== '' ? (
-                              <span className="text-green-600">
-                                {company.email} {isValidEmail(company.email) ? '✅' : '❌'}
-                              </span>
+                              <div className="space-y-1">
+                                {company.email.split(',').map((email, emailIndex) => {
+                                  const trimmedEmail = email.trim();
+                                  if (!trimmedEmail) return null;
+                                  return (
+                                    <span key={`${company._id}-${emailIndex}`} className="text-green-600 block">
+                                      {trimmedEmail} {isValidEmail(trimmedEmail) ? '✅' : '❌'}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             ) : (
                               <span className="text-red-600">No Email</span>
                             )}
@@ -880,12 +995,20 @@ const IndividualMessage = () => {
                           <td className="px-3 py-2 text-sm font-medium text-gray-900" title={truncateCompanyName(normalizeCompanyName(company.company))}>
                             {truncateCompanyName(normalizeCompanyName(company.company))}
                           </td>
-                          <td className="px-3 py-2 text-sm text-gray-600">{company.phone || '-'}</td>
+                          <td className="px-3 py-2 text-sm text-gray-600">{company.phone ? company.phone.split(',')[0].trim() : '-'}</td>
                           <td className="px-3 py-2 text-sm">
                             {company.email && company.email.trim() !== '' ? (
-                              <span className="text-green-600">
-                                {company.email} {isValidEmail(company.email) ? '✅' : '❌'}
-                              </span>
+                              <div className="space-y-1">
+                                {company.email.split(',').map((email, emailIndex) => {
+                                  const trimmedEmail = email.trim();
+                                  if (!trimmedEmail) return null;
+                                  return (
+                                    <span key={`${company._id}-${emailIndex}`} className="text-green-600 block">
+                                      {trimmedEmail} {isValidEmail(trimmedEmail) ? '✅' : '❌'}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             ) : (
                               <span className="text-red-600">No Email</span>
                             )}
@@ -1028,7 +1151,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => applyFormat('bold')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Bold (Ctrl+B)"
                   >
                     <Bold className="w-4 h-4" />
@@ -1036,7 +1159,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => applyFormat('italic')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Italic (Ctrl+I)"
                   >
                     <Italic className="w-4 h-4" />
@@ -1044,7 +1167,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => applyFormat('underline')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Underline (Ctrl+U)"
                   >
                     <Underline className="w-4 h-4" />
@@ -1056,7 +1179,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => alignText('left')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Align Left"
                   >
                     <AlignLeft className="w-4 h-4" />
@@ -1064,7 +1187,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => alignText('center')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Align Center"
                   >
                     <AlignCenter className="w-4 h-4" />
@@ -1072,7 +1195,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => alignText('right')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Align Right"
                   >
                     <AlignRight className="w-4 h-4" />
@@ -1084,7 +1207,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => applyFormat('list')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Bullet List"
                   >
                     <List className="w-4 h-4" />
@@ -1092,7 +1215,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={() => applyFormat('numbered_list')}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Numbered List"
                   >
                     <ListOrdered className="w-4 h-4" />
@@ -1104,7 +1227,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={insertLink}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Insert Link"
                   >
                     <Link className="w-4 h-4" />
@@ -1112,7 +1235,7 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={insertEmoji}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Insert Emoji"
                   >
                     <Smile className="w-4 h-4" />
@@ -1120,19 +1243,24 @@ const IndividualMessage = () => {
                   <button
                     type="button"
                     onClick={insertLineBreak}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
                     title="Line Break"
                   >
-                    ↵
+                    <span className="text-sm font-bold">↵</span>
                   </button>
                   <button
                     type="button"
                     onClick={attachFile}
-                    className="p-1 rounded hover:bg-gray-200 transition-colors text-gray-600"
-                    title="Attach File"
+                    className="p-1.5 rounded hover:bg-gray-200 transition-colors text-gray-600 hover:text-gray-800 hover:shadow-sm"
+                    title="Attach File (Coming Soon)"
                   >
                     <Paperclip className="w-4 h-4" />
                   </button>
+                </div>
+                
+                {/* Formatting Help */}
+                <div className="ml-auto text-xs text-gray-500 italic">
+                  Select text to format, or click buttons to insert formatting
                 </div>
               </div>
             )}
@@ -1146,7 +1274,7 @@ const IndividualMessage = () => {
               className={`w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
                 showToolbar ? 'rounded-t-none' : 'rounded-t-md'
               }`}
-              placeholder="Enter your message here... (Select text and use toolbar for formatting)"
+              placeholder="Enter your message here... (Select text and use toolbar for formatting, or click buttons to insert formatting)"
             />
           </div>
 

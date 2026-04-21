@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import toast, { Toaster } from 'react-hot-toast'
+import { History, Trash2, Calendar, Eye } from 'lucide-react'
 
 function GoogleMapsScraper() {
   const [url, setUrl] = useState('')
@@ -11,13 +12,16 @@ function GoogleMapsScraper() {
   const [count, setCount] = useState(0)
   const [progress, setProgress] = useState('')
   const [hasScraped, setHasScraped] = useState(false)
+  const [history, setHistory] = useState([])
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   useEffect(() => {
     const timer = setTimeout(() => {
       if (url.trim() && url.includes('google.com/maps') && !loading && !hasScraped) {
         handleScrape()
       }
-    }, 1000)
+    }, 2000) // Increased delay to prevent auto-trigger during navigation
     
     return () => clearTimeout(timer)
   }, [url])
@@ -89,6 +93,90 @@ function GoogleMapsScraper() {
     setProgress('')
   }
 
+  // Fetch history from API
+  const fetchHistory = async () => {
+    setHistoryLoading(true)
+    try {
+      const response = await axios.get('/api/google-maps-history')
+      if (response.data.success) {
+        setHistory(response.data.history)
+      }
+    } catch (error) {
+      console.error('Error fetching history:', error)
+      toast.error('Failed to fetch history')
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  // Load history on component mount
+  useEffect(() => {
+    fetchHistory()
+  }, [])
+
+  // Handle loading history entry
+  const handleLoadHistory = async (historyEntry) => {
+    try {
+      setData(historyEntry.data)
+      setCount(historyEntry.businessCount)
+      setHasScraped(true)
+      setShowHistory(false)
+      toast.success('History entry loaded successfully')
+    } catch (error) {
+      console.error('Error loading history entry:', error)
+      toast.error('Failed to load history entry')
+    }
+  }
+
+  // Handle deleting history entry
+  const handleDeleteHistory = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this history entry?')) {
+      return
+    }
+    
+    try {
+      await axios.delete(`/api/google-maps-history/${id}`)
+      setHistory(history.filter(item => item._id !== id))
+      toast.success('History entry deleted successfully')
+    } catch (error) {
+      console.error('Error deleting history entry:', error)
+      toast.error('Failed to delete history entry')
+    }
+  }
+
+  // Format date for display
+  const formatDate = (dateString) => {
+    const date = new Date(dateString)
+    return date.toLocaleString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Handle download all history
+  const handleDownloadAllHistory = async () => {
+    try {
+      const response = await axios.post('/api/download/google-maps-history');
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'google-maps-complete-history.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Complete history downloaded successfully!');
+    } catch (error) {
+      console.error('Download history error:', error);
+      toast.error('Failed to download history');
+    }
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50 to-indigo-50 p-4">
       <Toaster position="top-right" />
@@ -125,6 +213,13 @@ function GoogleMapsScraper() {
                 Reset
               </button>
             )}
+            <button
+              onClick={() => setShowHistory(true)}
+              className="px-6 py-4 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition-all flex items-center gap-2"
+            >
+              <History className="w-5 h-5" />
+              View History
+            </button>
             <button
               onClick={handleScrape}
               disabled={loading}
@@ -313,6 +408,100 @@ function GoogleMapsScraper() {
           </div>
         )}
       </div>
+
+      {/* History Modal */}
+      {showHistory && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[80vh] overflow-hidden">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold text-gray-900 flex items-center">
+                  <History className="w-6 h-6 mr-2 text-purple-600" />
+                  Scrape History
+                </h2>
+                <div className="flex items-center space-x-2">
+                  {history.length > 0 && (
+                    <button
+                      onClick={handleDownloadAllHistory}
+                      className="px-4 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors flex items-center"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 mr-2" />
+                      Download All
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowHistory(false)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[60vh]">
+              {historyLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <svg className="animate-spin h-8 w-8 text-purple-600" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                  </svg>
+                  <span className="ml-2 text-gray-600">Loading history...</span>
+                </div>
+              ) : history.length === 0 ? (
+                <div className="text-center py-8">
+                  <History className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                  <p className="text-gray-500 text-lg">No scrape history found</p>
+                  <p className="text-gray-400 text-sm mt-2">Start scraping to see your history here</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {history.map((entry) => (
+                    <div key={entry._id} className="bg-gray-50 rounded-lg p-4 border border-gray-200 hover:border-purple-300 transition-colors">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center mb-2">
+                            <Calendar className="w-4 h-4 mr-2 text-gray-500" />
+                            <span className="text-sm text-gray-600">
+                              {formatDate(entry.scrapeDate)}
+                            </span>
+                          </div>
+                          <div className="mb-2">
+                            <p className="text-sm font-medium text-gray-700 truncate" title={entry.url}>
+                              URL: {entry.url}
+                            </p>
+                            <p className="text-sm text-gray-600">
+                              Businesses: <span className="font-semibold text-purple-600">{entry.businessCount}</span>
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2 ml-4">
+                          <button
+                            onClick={() => handleLoadHistory(entry)}
+                            className="px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors flex items-center"
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            Load
+                          </button>
+                          <button
+                            onClick={() => handleDeleteHistory(entry._id)}
+                            className="px-3 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors flex items-center"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -123,6 +123,42 @@ const uploadHistorySchema = new mongoose.Schema({
 
 const UploadHistory = mongoose.model('UploadHistory', uploadHistorySchema);
 
+// JustDial Scraper History Schema
+const justdialHistorySchema = new mongoose.Schema({
+    url: String,
+    category: String,
+    businessCount: Number,
+    scrapeDate: { type: Date, default: Date.now },
+    scrapeType: { type: String, enum: ['single', 'bulk'], default: 'single' },
+    data: [{
+        name: String,
+        phone: String,
+        address: String,
+        city: String,
+        category: String,
+        image: String
+    }]
+});
+
+const JustdialHistory = mongoose.model('JustdialHistory', justdialHistorySchema);
+
+// Google Maps Scraper History Schema
+const googleMapsHistorySchema = new mongoose.Schema({
+    url: String,
+    businessCount: Number,
+    scrapeDate: { type: Date, default: Date.now },
+    data: [{
+        name: String,
+        address: String,
+        phone: String,
+        website: String,
+        rating: String,
+        category: String
+    }]
+});
+
+const GoogleMapsHistory = mongoose.model('GoogleMapsHistory', googleMapsHistorySchema);
+
 // Excel Scraper utilities
 // Enhanced email regex for better extraction
 const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi;
@@ -335,19 +371,427 @@ function cleanCategoryName(category) {
     .trim();
 }
 
-// Scrape website for contact information
+// Enhanced Website Scraper with Multi-Page Navigation and Bottom Scrolling
+class EnhancedWebsiteScraper {
+    constructor() {
+        this.browser = null;
+        this.page = null;
+        this.maxPages = 10; // Maximum pages to navigate per website
+        this.maxScrollAttempts = 5; // Maximum scroll attempts per page
+        this.scrollDelay = 2000; // Delay between scrolls in ms
+        this.pageDelay = 3000; // Delay between page navigations in ms
+    }
+
+    async initialize() {
+        try {
+            console.log('Initializing enhanced website scraper...');
+            
+            const launchOptions = {
+                headless: "new",
+                protocolTimeout: 300000,
+                defaultViewport: proxyRotator.getRandomViewport(),
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--disable-gpu',
+                    '--disable-web-security',
+                    '--disable-features=VizDisplayCompositor',
+                    '--disable-extensions',
+                    '--disable-plugins',
+                    '--disable-default-apps',
+                    '--disable-background-timer-throttling',
+                    '--disable-backgrounding-occluded-windows',
+                    '--disable-renderer-backgrounding',
+                    '--disable-background-networking',
+                    '--disable-blink-features=AutomationControlled',
+                    '--disable-features=TranslateUI',
+                    '--disable-ipc-flooding-protection',
+                    '--disable-features=IsolateOrigins,site-per-process',
+                    '--disable-site-isolation-trials',
+                    '--disable-features=CrossSiteDocumentBlockingIfIsolating',
+                    '--disable-features=CrossSiteDocumentBlockingAlways'
+                ]
+            };
+
+            this.browser = await puppeteer.launch(launchOptions);
+            this.page = await this.browser.newPage();
+            
+            // Set random user agent
+            await this.page.setUserAgent(proxyRotator.getRandomUserAgent());
+            
+            // Set additional headers to mimic real browser
+            await this.page.setExtraHTTPHeaders({
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'none',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1'
+            });
+
+            // Anti-detection script
+            await this.page.evaluateOnNewDocument(() => {
+                Object.defineProperty(navigator, 'webdriver', {
+                    get: () => undefined,
+                });
+                
+                Object.defineProperty(navigator, 'plugins', {
+                    get: () => [1, 2, 3, 4, 5],
+                });
+                
+                Object.defineProperty(navigator, 'languages', {
+                    get: () => ['en-US', 'en'],
+                });
+                
+                window.chrome = {
+                    runtime: {},
+                };
+                
+                const originalQuery = window.navigator.permissions.query;
+                return window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications' ?
+                        Promise.resolve({ state: Notification.permission }) :
+                        originalQuery(parameters)
+                );
+            });
+
+            console.log('Enhanced scraper initialized successfully');
+            return true;
+        } catch (error) {
+            console.error('Failed to initialize enhanced scraper:', error);
+            return false;
+        }
+    }
+
+    async scrollToBottom() {
+        try {
+            let previousHeight = 0;
+            let scrollAttempts = 0;
+            
+            while (scrollAttempts < this.maxScrollAttempts) {
+                // Get current page height
+                const currentHeight = await this.page.evaluate(() => document.body.scrollHeight);
+                
+                // If height hasn't changed, we've reached the bottom
+                if (currentHeight === previousHeight) {
+                    break;
+                }
+                
+                // Scroll to bottom
+                await this.page.evaluate(() => {
+                    window.scrollTo(0, document.body.scrollHeight);
+                });
+                
+                // Wait for potential lazy loading
+                await this.page.waitForTimeout(this.scrollDelay);
+                
+                previousHeight = currentHeight;
+                scrollAttempts++;
+                
+                console.log(`Scroll attempt ${scrollAttempts}, height: ${currentHeight}`);
+            }
+            
+            console.log(`Finished scrolling after ${scrollAttempts} attempts`);
+        } catch (error) {
+            console.error('Error during scroll to bottom:', error);
+        }
+    }
+
+    async extractContactInfoFromPage() {
+        try {
+            const pageData = await this.page.evaluate(() => {
+                const contactSelectors = [
+                    'body', 'footer', '.contact', '.footer', '.header', '.nav',
+                    'a[href^="mailto:"]', 'a[href^="tel:"]', '[href*="contact"]',
+                    '.phone', '.email', '[itemprop="telephone"]', '[itemprop="email"]',
+                    '.address', '.info', '.about', 'main', 'section', 'article',
+                    '.email-address', '.contact-email', '.support-email', '.mail',
+                    '[data-email]', '.email-us', '.contact-info', '.footer-info',
+                    'span[class*="email"]', 'div[class*="email"]', 'a[class*="email"]',
+                    '.business-email', '.company-email', '.office-email',
+                    '.contact-info', '.support', '.help', '.team', '.staff',
+                    '.management', '.leadership', '.about-us', '.our-team'
+                ];
+
+                let allText = '';
+                let allLinks = [];
+                
+                // Extract text from all selectors
+                contactSelectors.forEach(selector => {
+                    try {
+                        const elements = document.querySelectorAll(selector);
+                        elements.forEach(elem => {
+                            allText += elem.textContent + ' ';
+                        });
+                    } catch (e) {
+                        // Ignore selector errors
+                    }
+                });
+
+                // Extract email and phone links specifically
+                document.querySelectorAll('a[href^="mailto:"]').forEach(elem => {
+                    const email = elem.getAttribute('href').replace('mailto:', '').split('?')[0];
+                    allText += email + ' ';
+                    allLinks.push({ type: 'email', value: email });
+                });
+
+                document.querySelectorAll('a[href^="tel:"]').forEach(elem => {
+                    const phone = elem.getAttribute('href').replace('tel:', '');
+                    allText += phone + ' ';
+                    allLinks.push({ type: 'phone', value: phone });
+                });
+
+                // Extract meta information
+                document.querySelectorAll('meta[name="description"], meta[property="og:description"]').forEach(elem => {
+                    allText += elem.getAttribute('content') + ' ';
+                });
+
+                // Extract title
+                allText += document.title + ' ';
+
+                // Extract all links that might lead to contact pages
+                document.querySelectorAll('a[href]').forEach(elem => {
+                    const href = elem.getAttribute('href');
+                    const text = elem.textContent.toLowerCase();
+                    
+                    if (href.includes('contact') || href.includes('about') || 
+                        href.includes('team') || href.includes('support') ||
+                        text.includes('contact') || text.includes('about') ||
+                        text.includes('team') || text.includes('support')) {
+                        allLinks.push({ type: 'navigation', value: href, text: elem.textContent });
+                    }
+                });
+
+                return {
+                    text: allText,
+                    links: allLinks,
+                    pageTitle: document.title,
+                    pageUrl: window.location.href
+                };
+            });
+
+            return pageData;
+        } catch (error) {
+            console.error('Error extracting contact info from page:', error);
+            return { text: '', links: [], pageTitle: '', pageUrl: '' };
+        }
+    }
+
+    async navigateToContactPages() {
+        const contactPages = [];
+        try {
+            const pageData = await this.extractContactInfoFromPage();
+            
+            // Find potential contact page links
+            for (const link of pageData.links) {
+                if (link.type === 'navigation' && contactPages.length < 3) {
+                    const absoluteUrl = new URL(link.value, pageData.pageUrl).href;
+                    if (absoluteUrl.startsWith('http') && !contactPages.includes(absoluteUrl)) {
+                        contactPages.push(absoluteUrl);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error finding contact pages:', error);
+        }
+        
+        return contactPages;
+    }
+
+    async scrapeWebsite(url) {
+        try {
+            if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                url = 'https://' + url;
+            }
+
+            console.log(`Enhanced scraping: ${url}`);
+            
+            if (!this.browser) {
+                const initialized = await this.initialize();
+                if (!initialized) {
+                    throw new Error('Failed to initialize scraper');
+                }
+            }
+
+            // Navigate to the main page
+            await this.page.goto(url, { 
+                waitUntil: 'networkidle2', 
+                timeout: 30000 
+            });
+            
+            // Wait a bit for dynamic content
+            await this.page.waitForTimeout(2000);
+            
+            // Scroll to bottom to load all content
+            await this.scrollToBottom();
+            
+            // Extract contact info from main page
+            const mainPageData = await this.extractContactInfoFromPage();
+            let allText = mainPageData.text;
+            let visitedPages = [url];
+            
+            // Find and navigate to contact pages
+            const contactPages = await this.navigateToContactPages();
+            
+            for (let i = 0; i < Math.min(contactPages.length, 3); i++) {
+                try {
+                    const contactUrl = contactPages[i];
+                    if (!visitedPages.includes(contactUrl)) {
+                        console.log(`Navigating to contact page: ${contactUrl}`);
+                        
+                        await this.page.goto(contactUrl, { 
+                            waitUntil: 'networkidle2', 
+                            timeout: 20000 
+                        });
+                        
+                        await this.page.waitForTimeout(1500);
+                        await this.scrollToBottom();
+                        
+                        const contactPageData = await this.extractContactInfoFromPage();
+                        allText += ' ' + contactPageData.text;
+                        visitedPages.push(contactUrl);
+                        
+                        // Delay between page navigations
+                        await this.page.waitForTimeout(this.pageDelay);
+                    }
+                } catch (error) {
+                    console.error(`Error navigating to contact page ${contactPages[i]}:`, error.message);
+                }
+            }
+            
+            console.log(`Total extracted text length: ${allText.length} characters from ${visitedPages.length} pages`);
+
+            // Extract emails using multiple patterns
+            let allEmails = [];
+            additionalEmailPatterns.forEach(pattern => {
+                const matches = allText.match(pattern) || [];
+                allEmails = allEmails.concat(matches);
+            });
+
+            const emails = [...new Set(allEmails)];
+            const uniqueEmails = emails
+                .map(email => email.toLowerCase().trim().replace(/^mailto:/, ''))
+                .filter(email => {
+                    return !email.includes('example.com') && 
+                           !email.includes('test.com') && 
+                           !email.includes('sample.com') &&
+                           !email.includes('domain.com') &&
+                           !email.includes('yourdomain.com') &&
+                           !email.match(/\.(png|jpg|jpeg|gif|css|js)$/) &&
+                           email.length > 5 &&
+                           email.match(/^[^@]+@[^@]+\.[^@]+$/);
+                })
+                .filter((email, index, self) => self.indexOf(email) === index)
+                .slice(0, 10); // Increased limit for comprehensive extraction
+
+            // Extract phone numbers
+            const phones = allText.match(phoneRegex) || [];
+            const uniquePhones = [...new Set(phones)]
+                .map(phone => phone.trim())
+                .filter(phone => {
+                    const cleaned = phone.replace(/[^0-9+]/g, '');
+                    
+                    if (cleaned.match(/^(19|20)\d{2}$/)) return false;
+                    if (cleaned.match(/^\d{4}$/)) return false;
+                    if (cleaned.match(/^(123|000|111|222|333|444|555|666|777|888|999)/)) return false;
+                    
+                    if (cleaned.length < 7 || cleaned.length > 15) return false;
+                    
+                    const digitsOnly = cleaned.replace(/\D/g, '');
+                    if (digitsOnly.length < 7) return false;
+                    
+                    return true;
+                })
+                .slice(0, 10); // Increased limit for comprehensive extraction
+
+            console.log(`Found ${uniqueEmails.length} emails and ${uniquePhones.length} phones for ${url}`);
+            
+            if (uniqueEmails.length > 0) {
+                console.log(`Emails found: ${uniqueEmails.slice(0, 5).join(', ')}${uniqueEmails.length > 5 ? '...' : ''}`);
+            }
+            if (uniquePhones.length > 0) {
+                console.log(`Phones found: ${uniquePhones.slice(0, 3).join(', ')}${uniquePhones.length > 3 ? '...' : ''}`);
+            }
+
+            return {
+                success: true,
+                emails: uniqueEmails.slice(0, 10),
+                phones: uniquePhones.slice(0, 5),
+                error: null,
+                scrapedUrl: url,
+                pagesVisited: visitedPages.length,
+                visitedPages: visitedPages
+            };
+        } catch (error) {
+            console.error(`Error in enhanced scraping ${url}:`, error.message);
+            return {
+                success: false,
+                emails: [],
+                phones: [],
+                error: error.message,
+                scrapedUrl: url,
+                pagesVisited: 0,
+                visitedPages: []
+            };
+        }
+    }
+
+    async close() {
+        try {
+            if (this.browser) {
+                await this.browser.close();
+                this.browser = null;
+                this.page = null;
+                console.log('Enhanced scraper closed');
+            }
+        } catch (error) {
+            console.error('Error closing enhanced scraper:', error);
+        }
+    }
+}
+
+// Fallback to original scraper for compatibility
 const scrapeWebsite = async (url) => {
+    try {
+        // Try enhanced scraper first
+        const enhancedScraper = new EnhancedWebsiteScraper();
+        const result = await enhancedScraper.scrapeWebsite(url);
+        await enhancedScraper.close();
+        
+        if (result.success && (result.emails.length > 0 || result.phones.length > 0)) {
+            return result;
+        }
+        
+        // Fallback to original scraper if enhanced doesn't find anything
+        console.log('Enhanced scraper found limited data, trying fallback...');
+        return await scrapeWebsiteFallback(url);
+    } catch (error) {
+        console.error('Enhanced scraper failed, using fallback:', error.message);
+        return await scrapeWebsiteFallback(url);
+    }
+};
+
+// Original scraper as fallback
+const scrapeWebsiteFallback = async (url) => {
     try {
         if (!url.startsWith('http://') && !url.startsWith('https://')) {
             url = 'https://' + url;
         }
 
-        console.log(`Scraping: ${url}`);
+        console.log(`Fallback scraping: ${url}`);
 
         const response = await axios.get(url, {
             timeout: 15000,
             headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'User-Agent': proxyRotator.getRandomUserAgent(),
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'Accept-Language': 'en-US,en;q=0.5',
                 'Accept-Encoding': 'gzip, deflate',
@@ -366,7 +810,6 @@ const scrapeWebsite = async (url) => {
             'a[href^="mailto:"]', 'a[href^="tel:"]', '[href*="contact"]',
             '.phone', '.email', '[itemprop="telephone"]', '[itemprop="email"]',
             '.address', '.info', '.about', 'main', 'section', 'article',
-            // Additional email-specific selectors
             '.email-address', '.contact-email', '.support-email', '.mail',
             '[data-email]', '.email-us', '.contact-info', '.footer-info',
             'span[class*="email"]', 'div[class*="email"]', 'a[class*="email"]',
@@ -401,7 +844,7 @@ const scrapeWebsite = async (url) => {
 
         allText += $('title').text() + ' ';
 
-        console.log(`Extracted text length: ${allText.length} characters`);
+        console.log(`Fallback extracted text length: ${allText.length} characters`);
 
         // Use multiple email patterns for better extraction
         let allEmails = [];
@@ -424,7 +867,7 @@ const scrapeWebsite = async (url) => {
                        email.match(/^[^@]+@[^@]+\.[^@]+$/);
             })
             .filter((email, index, self) => self.indexOf(email) === index)
-            .slice(0, 5); // Limit to 5 emails per company
+            .slice(0, 5);
 
         const phones = allText.match(phoneRegex) || [];
         
@@ -446,7 +889,7 @@ const scrapeWebsite = async (url) => {
             })
             .slice(0, 5);
 
-        console.log(`Found ${uniqueEmails.length} emails and ${uniquePhones.length} phones for ${url}`);
+        console.log(`Fallback found ${uniqueEmails.length} emails and ${uniquePhones.length} phones for ${url}`);
         
         if (uniqueEmails.length > 0) {
             console.log(`Emails found: ${uniqueEmails.join(', ')}`);
@@ -463,7 +906,7 @@ const scrapeWebsite = async (url) => {
             scrapedUrl: url
         };
     } catch (error) {
-        console.error(`Error scraping ${url}:`, error.message);
+        console.error(`Error in fallback scraping ${url}:`, error.message);
         return {
             success: false,
             emails: [],
@@ -1192,8 +1635,9 @@ class JustdialScraper {
         let listings = [];
         
         const possibleSelectors = [
-          '.resultbox',
-          '[data-testid="result-card"]',
+          // Enhanced 2024 Justdial selectors
+          '.jsx-4235315401',
+          '.jsx-2806317444',
           '.jsx-2622435384',
           '.result-card',
           '.listing-container',
@@ -1225,6 +1669,22 @@ class JustdialScraper {
           'div[class*="jsx-"]:has([data-testid*="phone"])',
           'div[class*="jsx-"]:has([data-testid*="contact"])',
           'div[class*="jsx-"]:has([class*="contact"])',
+          // Additional comprehensive selectors for maximum extraction
+          'div[class*="jsx-"]',
+          'div[style*="border"]',
+          'div[style*="padding"]',
+          'div[class*="container"]',
+          'div[class*="wrapper"]',
+          'div[class*="row"]',
+          'div[class*="col"]',
+          'div[class*="flex"]',
+          'div[class*="grid"]',
+          'section',
+          'main',
+          'article',
+          'li',
+          'tr',
+          'td',
           // More generic selectors for dynamic content
           'div[class*="-"]:has(h2, h3, h4)',
           'div[class*="-"]:has(.phone, .tel, .mobile)',
@@ -1233,7 +1693,14 @@ class JustdialScraper {
           'article:has(h2, h3, h4)',
           'li:has(h2, h3, h4)',
           'li:has(.phone, .tel, .mobile)',
-          'li:has(a[href*="tel:"])'
+          'li:has(a[href*="tel:"])',
+          // Any div with phone number
+          'div:has(.phone)',
+          'div:has(.tel)',
+          'div:has(.mobile)',
+          'div:has(a[href*="tel:"])',
+          'div:has(span[title*="Call"])',
+          'div:has(div[title*="Call"])'
         ];
         
         for (const selector of possibleSelectors) {
@@ -2187,17 +2654,17 @@ class BulkJustdialScraper extends JustdialScraper {
   }
 
   async handleBulkPagination() {
-    console.log('Starting enhanced bulk pagination for maximum data extraction...');
+    console.log('Starting enhanced bulk pagination for maximum data extraction (target: 100+ results)...');
     
     let allBusinesses = [];
     let currentPage = 1;
-    const maxPages = 100; // Increased for bulk scraping
+    const maxPages = 150; // Further increased for bulk scraping
     let loadMoreFound = true;
     let lastPageBusinessCount = 0;
     let consecutiveEmptyPages = 0;
-    const maxEmptyPages = 10; // Increased from 5 to 10 for better scraping
+    const maxEmptyPages = 20; // Further increased to prevent early stopping
     let noNewContentCount = 0;
-    const maxNoNewContent = 8; // Stop after 8 pages with no new content
+    const maxNoNewContent = 15; // Increased from 8 to 15 to allow more pages
     
     while (loadMoreFound && currentPage <= maxPages && allBusinesses.length < this.maxCount) {
       const progress = Math.min((allBusinesses.length / this.minCount) * 100, 100);
@@ -2260,12 +2727,13 @@ class BulkJustdialScraper extends JustdialScraper {
         noNewContentCount = 0;
       }
       
-      // Step 6: Check if we should continue based on empty pages
+      // Step 6: Check if we should continue based on empty pages - more lenient for better results
       if (pageBusinesses.length === 0) {
         consecutiveEmptyPages++;
         console.log(`Bulk Page ${currentPage}: Empty page detected (${consecutiveEmptyPages}/${maxEmptyPages})`);
-        if (consecutiveEmptyPages >= maxEmptyPages) {
-          console.log('Bulk scraping: Too many consecutive empty pages, stopping...');
+        // Only stop if we have at least 100 businesses or reached max empty pages
+        if (consecutiveEmptyPages >= maxEmptyPages && allBusinesses.length >= 100) {
+          console.log('Bulk scraping: Enough businesses collected, stopping...');
           break;
         }
       } else {
@@ -2273,7 +2741,7 @@ class BulkJustdialScraper extends JustdialScraper {
         lastPageBusinessCount = pageBusinesses.length;
       }
       
-      // Step 7: Check for more pages or load more buttons
+      // Step 7: Check for more pages or load more buttons - be more persistent
       console.log(`Bulk Page ${currentPage}: Looking for next page or load more button...`);
       loadMoreFound = await this.page.evaluate(() => {
         // Enhanced Load More button detection
@@ -2388,24 +2856,50 @@ class BulkJustdialScraper extends JustdialScraper {
     console.log(`Bulk scraping - Total pages processed: ${currentPage - 1}`);
     console.log(`Bulk scraping - Total businesses found: ${allBusinesses.length}`);
     
-    // Clean and deduplicate all collected businesses
-    const cleanedBusinesses = allBusinesses.map(b => this.cleanAndValidateBusiness(b));
+    // Clean and deduplicate all collected businesses with improved logic
+    console.log(`Bulk scraping - Starting deduplication of ${allBusinesses.length} businesses...`);
+    
+    // First pass: Basic cleaning and validation
+    const cleanedBusinesses = allBusinesses.map(b => this.cleanAndValidateBusiness(b)).filter(b => b !== null);
+    console.log(`Bulk scraping - After basic cleaning: ${cleanedBusinesses.length} businesses`);
+    
+    // Second pass: Standard deduplication
     const uniqueBusinesses = this.deduplicateBusinesses(cleanedBusinesses);
+    console.log(`Bulk scraping - After standard deduplication: ${uniqueBusinesses.length} unique businesses`);
     
-    console.log(`Bulk scraping - After deduplication: ${uniqueBusinesses.length} unique businesses`);
-    
-    // Ensure minimum 100 businesses if possible to match Justdial's actual count
-    if (uniqueBusinesses.length < 100 && uniqueBusinesses.length < allBusinesses.length) {
-      console.log('Bulk scraping - Trying to include more businesses to reach minimum 100...');
-      // If we filtered out too many, relax some validation criteria
-      const relaxedBusinesses = this.deduplicateBusinessesRelaxed(allBusinesses);
+    // Third pass: If still less than 100, try relaxed deduplication
+    let finalBusinesses = uniqueBusinesses;
+    if (uniqueBusinesses.length < 100 && cleanedBusinesses.length > uniqueBusinesses.length) {
+      console.log('Bulk scraping - Trying relaxed deduplication to reach 100+ businesses...');
+      const relaxedBusinesses = this.deduplicateBusinessesRelaxed(cleanedBusinesses);
+      console.log(`Bulk scraping - After relaxed deduplication: ${relaxedBusinesses.length} businesses`);
+      
+      // Use the relaxed version if it gives us more businesses
       if (relaxedBusinesses.length > uniqueBusinesses.length) {
-        console.log(`Bulk scraping - Using relaxed criteria: ${relaxedBusinesses.length} businesses`);
-        return relaxedBusinesses.slice(0, this.maxCount);
+        finalBusinesses = relaxedBusinesses;
       }
     }
     
-    return uniqueBusinesses.slice(0, this.maxCount);
+    // Fourth pass: If still less than 100, try very relaxed criteria
+    if (finalBusinesses.length < 100 && allBusinesses.length > finalBusinesses.length) {
+      console.log('Bulk scraping - Trying very relaxed criteria to reach 100+ businesses...');
+      const veryRelaxedBusinesses = this.deduplicateBusinessesVeryRelaxed(allBusinesses);
+      console.log(`Bulk scraping - After very relaxed deduplication: ${veryRelaxedBusinesses.length} businesses`);
+      
+      // Use the very relaxed version if it gives us significantly more businesses
+      if (veryRelaxedBusinesses.length > finalBusinesses.length) {
+        finalBusinesses = veryRelaxedBusinesses;
+      }
+    }
+    
+    console.log(`Bulk scraping - Final result: ${finalBusinesses.length} unique businesses`);
+    
+    // Ensure we return at least 100 if possible
+    if (finalBusinesses.length < 100 && finalBusinesses.length < this.maxCount) {
+      console.log(`Bulk scraping - Warning: Only ${finalBusinesses.length} businesses found, but this is the maximum available after deduplication`);
+    }
+    
+    return finalBusinesses.slice(0, this.maxCount);
   }
 
   async enhancedBulkScroll() {
@@ -2702,6 +3196,53 @@ class BulkJustdialScraper extends JustdialScraper {
     });
     
     console.log(`Relaxed deduplication complete: ${uniqueBusinesses.length} unique businesses from ${businesses.length} total`);
+    return uniqueBusinesses;
+  }
+
+  // Very relaxed deduplication for maximum business count
+  deduplicateBusinessesVeryRelaxed(businesses) {
+    console.log(`Using very relaxed deduplication for ${businesses.length} businesses...`);
+    const uniqueBusinesses = [];
+    const seenPhones = new Set(); // Only track phone numbers
+    
+    businesses.forEach((business, index) => {
+      const phoneKey = business.phone || '';
+      const nameKey = business.name ? business.name.toLowerCase().trim() : '';
+      
+      // Very relaxed validation - just need some basic info
+      const hasAnyName = nameKey && nameKey.length > 1;
+      const hasAnyPhone = phoneKey && phoneKey.length >= 5;
+      
+      // Only filter out obvious pagination elements
+      const isObviousPagination = nameKey && (
+        nameKey.match(/^\d+$/) ||
+        nameKey.match(/^(\d+,\s*)+\d+\s*more$/i) ||
+        nameKey.includes('load more results') ||
+        nameKey.includes('show more results')
+      );
+      
+      const isValidBusiness = !isObviousPagination && (hasAnyName || hasAnyPhone);
+      
+      if (!isValidBusiness) {
+        return;
+      }
+      
+      // Only filter out exact phone duplicates (same phone number)
+      // Allow same business names with different phone numbers
+      const isPhoneDuplicate = phoneKey && seenPhones.has(phoneKey);
+      
+      if (!isPhoneDuplicate) {
+        if (phoneKey) {
+          seenPhones.add(phoneKey);
+        }
+        uniqueBusinesses.push(business);
+        console.log(`-> Added unique business (very relaxed): "${business.name}" (Phone: ${business.phone || 'N/A'})`);
+      } else {
+        console.log(`-> Removed phone duplicate (very relaxed): "${business.name}" (Phone: ${business.phone || 'N/A'})`);
+      }
+    });
+    
+    console.log(`Very relaxed deduplication complete: ${uniqueBusinesses.length} unique businesses from ${businesses.length} total`);
     return uniqueBusinesses;
   }
 }
@@ -3842,6 +4383,22 @@ app.post('/api/justdial-scrape', async (req, res) => {
       console.log(`Warning: Only ${data.length} unique businesses found, which is less than the target 100+ from Justdial`);
     }
     
+    // Save to history
+    try {
+      const historyEntry = new JustdialHistory({
+        url: url,
+        category: detectedCategory || 'Unknown',
+        businessCount: data.length,
+        scrapeType: 'single',
+        data: data
+      });
+      await historyEntry.save();
+      console.log('JustDial scrape history saved successfully');
+    } catch (historyError) {
+      console.error('Error saving JustDial history:', historyError);
+      // Don't fail the request if history saving fails
+    }
+
     res.json({
       success: true,
       data: data,
@@ -3909,6 +4466,22 @@ app.post('/api/justdial-bulk-scrape', async (req, res) => {
       finalData: data
     });
     
+    // Save to history
+    try {
+      const historyEntry = new JustdialHistory({
+        url: url,
+        category: detectedCategory || 'Unknown',
+        businessCount: data.length,
+        scrapeType: 'bulk',
+        data: data
+      });
+      await historyEntry.save();
+      console.log('JustDial bulk scrape history saved successfully');
+    } catch (historyError) {
+      console.error('Error saving JustDial bulk history:', historyError);
+      // Don't fail request if history saving fails
+    }
+
     // Close the connection
     res.write(`data: ${JSON.stringify({ success: true, data: data, count: data.length, finished: true })}\n\n`);
     res.end();
@@ -4188,6 +4761,20 @@ app.post('/api/google-maps-scrape', async (req, res) => {
     await new Promise(resolve => setTimeout(resolve, 5000));
     
     const results = await scrapeAllData(page);
+
+    // Save to history
+    try {
+      const historyEntry = new GoogleMapsHistory({
+        url: url,
+        businessCount: results.length,
+        data: results
+      });
+      await historyEntry.save();
+      console.log('Google Maps scrape history saved successfully');
+    } catch (historyError) {
+      console.error('Error saving Google Maps history:', historyError);
+      // Don't fail request if history saving fails
+    }
 
     await browser.close();
     res.json({ success: true, data: results, count: results.length });
@@ -4773,6 +5360,221 @@ const cleanupOldFiles = () => {
         console.log('Cleanup error:', error.message);
     }
 };
+
+// History API endpoints
+
+// Get JustDial scraper history
+app.get('/api/justdial-history', async (req, res) => {
+  try {
+    const history = await JustdialHistory.find()
+      .sort({ scrapeDate: -1 })
+      .limit(50); // Limit to last 50 entries
+    
+    res.json({
+      success: true,
+      history: history
+    });
+  } catch (error) {
+    console.error('Error fetching JustDial history:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch history',
+      message: error.message 
+    });
+  }
+});
+
+// Get Google Maps scraper history
+app.get('/api/google-maps-history', async (req, res) => {
+  try {
+    const history = await GoogleMapsHistory.find()
+      .sort({ scrapeDate: -1 })
+      .limit(50); // Limit to last 50 entries
+    
+    res.json({
+      success: true,
+      history: history
+    });
+  } catch (error) {
+    console.error('Error fetching Google Maps history:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch history',
+      message: error.message 
+    });
+  }
+});
+
+// Get JustDial history by ID
+app.get('/api/justdial-history/:id', async (req, res) => {
+  try {
+    const historyEntry = await JustdialHistory.findById(req.params.id);
+    
+    if (!historyEntry) {
+      return res.status(404).json({ error: 'History entry not found' });
+    }
+    
+    res.json({
+      success: true,
+      data: historyEntry
+    });
+  } catch (error) {
+    console.error('Error fetching JustDial history entry:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch history entry',
+      message: error.message 
+    });
+  }
+});
+
+// Get Google Maps history by ID
+app.get('/api/google-maps-history/:id', async (req, res) => {
+  try {
+    const historyEntry = await GoogleMapsHistory.findById(req.params.id);
+    
+    if (!historyEntry) {
+      return res.status(404).json({ error: 'History entry not found' });
+    }
+    
+    res.json({
+      success: true,
+      data: historyEntry
+    });
+  } catch (error) {
+    console.error('Error fetching Google Maps history entry:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch history entry',
+      message: error.message 
+    });
+  }
+});
+
+// Delete JustDial history entry
+app.delete('/api/justdial-history/:id', async (req, res) => {
+  try {
+    const historyEntry = await JustdialHistory.findByIdAndDelete(req.params.id);
+    
+    if (!historyEntry) {
+      return res.status(404).json({ error: 'History entry not found' });
+    }
+    
+    res.json({
+      success: true,
+      message: 'History entry deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting JustDial history entry:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete history entry',
+      message: error.message 
+    });
+  }
+});
+
+// Delete Google Maps history entry
+app.delete('/api/google-maps-history/:id', async (req, res) => {
+  try {
+    const historyEntry = await GoogleMapsHistory.findByIdAndDelete(req.params.id);
+    
+    if (!historyEntry) {
+      return res.status(404).json({ error: 'History entry not found' });
+    }
+    
+    res.json({
+      success: true,
+      message: 'History entry deleted successfully'
+    });
+  } catch (error) {
+    console.error('Error deleting Google Maps history entry:', error);
+    res.status(500).json({ 
+      error: 'Failed to delete history entry',
+      message: error.message 
+    });
+  }
+});
+
+// Download all JustDial history data
+app.post('/api/download/justdial-history', async (req, res) => {
+  try {
+    const history = await JustdialHistory.find()
+      .sort({ scrapeDate: -1 });
+    
+    if (history.length === 0) {
+      return res.status(404).json({ error: 'No history data found' });
+    }
+
+    // Combine all data from all history entries
+    const allData = [];
+    history.forEach(entry => {
+      entry.data.forEach(business => {
+        allData.push({
+          'Business Name': business.name || '',
+          'Phone Number': business.phone || '',
+          'Address': business.address || '',
+          'Category': business.category || entry.category || '',
+          'City': business.city || '',
+          'Image URL': business.image || '',
+          'Scrape Date': new Date(entry.scrapeDate).toLocaleString(),
+          'Scrape Type': entry.scrapeType || 'single',
+          'Original URL': entry.url || ''
+        });
+      });
+    });
+
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(allData);
+    xlsx.utils.book_append_sheet(wb, ws, 'All History Data');
+    
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="justdial-complete-history.xlsx"');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Download history error:', error);
+    res.status(500).json({ error: 'Failed to download history data' });
+  }
+});
+
+// Download all Google Maps history data
+app.post('/api/download/google-maps-history', async (req, res) => {
+  try {
+    const history = await GoogleMapsHistory.find()
+      .sort({ scrapeDate: -1 });
+    
+    if (history.length === 0) {
+      return res.status(404).json({ error: 'No history data found' });
+    }
+
+    // Combine all data from all history entries
+    const allData = [];
+    history.forEach(entry => {
+      entry.data.forEach(business => {
+        allData.push({
+          'Business Name': business.name || '',
+          'Address': business.address || '',
+          'Phone': business.phone || '',
+          'Website': business.website || '',
+          'Rating': business.rating || '',
+          'Category': business.category || '',
+          'Scrape Date': new Date(entry.scrapeDate).toLocaleString(),
+          'Original URL': entry.url || ''
+        });
+      });
+    });
+
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(allData);
+    xlsx.utils.book_append_sheet(wb, ws, 'All History Data');
+    
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="google-maps-complete-history.xlsx"');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Download history error:', error);
+    res.status(500).json({ error: 'Failed to download history data' });
+  }
+});
 
 // Run cleanup every hour
 setInterval(cleanupOldFiles, 60 * 60 * 1000);

@@ -420,6 +420,8 @@ const Upload = () => {
   // Auto-load data on component mount
   useEffect(() => {
     const initializeData = async () => {
+      // Add small delay to ensure smooth navigation
+      await new Promise(resolve => setTimeout(resolve, 100));
       await fetchCompanies();
       await fetchRecentProcessedData();
     };
@@ -690,19 +692,57 @@ const Upload = () => {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-8">
       <Toaster position="top-right" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Header Section */}
+        
+        {/* History Section - Top */}
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-gray-100">
-          <div className="text-center space-y-4">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl shadow-lg transform hover:scale-105 transition-transform">
-              <Globe className="w-10 h-10 text-white" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-lg">
+                <History className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800">Upload History</h3>
+                <p className="text-sm text-gray-600">View and manage all your previous file uploads</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                Automatic Data Processing
-              </h1>
-              <p className="text-gray-600 text-lg mt-2">
-                All processed data is automatically fetched and displayed in real-time
+            <button
+              onClick={openHistoryModal}
+              className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all duration-300"
+            >
+              <History className="w-4 h-4 mr-2" />
+              View History
+            </button>
+          </div>
+          
+          {/* Recent Uploads Summary */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
+              <div className="flex items-center space-x-2 mb-2">
+                <FileSpreadsheet className="w-5 h-5 text-blue-600" />
+                <span className="text-sm font-medium text-blue-900">Total Uploads</span>
+              </div>
+              <p className="text-2xl font-bold text-blue-600">{uploadHistory.length}</p>
+              <p className="text-xs text-blue-700 mt-1">Files uploaded</p>
+            </div>
+            
+            <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+              <div className="flex items-center space-x-2 mb-2">
+                <Database className="w-5 h-5 text-green-600" />
+                <span className="text-sm font-medium text-green-900">Companies</span>
+              </div>
+              <p className="text-2xl font-bold text-green-600">{companies.length}</p>
+              <p className="text-xs text-green-700 mt-1">In database</p>
+            </div>
+            
+            <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+              <div className="flex items-center space-x-2 mb-2">
+                <Clock className="w-5 h-5 text-purple-600" />
+                <span className="text-sm font-medium text-purple-900">Last Upload</span>
+              </div>
+              <p className="text-lg font-bold text-purple-600">
+                {uploadHistory.length > 0 ? formatDate(uploadHistory[0].uploadDate) : 'No uploads yet'}
               </p>
+              <p className="text-xs text-purple-700 mt-1">Most recent activity</p>
             </div>
           </div>
         </div>
@@ -811,56 +851,29 @@ const Upload = () => {
               </div>
             </div>
           )}
-
-          {/* File Format Guidelines */}
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <h3 className="font-semibold text-blue-900 mb-3 text-sm">File Format Guidelines:</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs text-blue-800">
-              <div>
-                <strong>Required Columns:</strong>
-                <ul className="mt-1 space-y-1">
-                  <li>• Company Name</li>
-                  <li>• Phone Number</li>
-                </ul>
-              </div>
-              <div>
-                <strong>Optional Columns:</strong>
-                <ul className="mt-1 space-y-1">
-                  <li>• Email Address</li>
-                  <li>• Website URL</li>
-                  <li>• Address</li>
-                  <li>• Category</li>
-                  <li>• City</li>
-                </ul>
-              </div>
-            </div>
-            <div className="mt-3 text-xs text-blue-700">
-              <strong>Note:</strong> Category and City columns will be used for filtering companies in the dashboard.
-            </div>
-          </div>
         </div>
 
-        {/* Upload History Button */}
-        <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-gray-100">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="p-3 bg-gradient-to-r from-purple-500 to-indigo-600 rounded-xl shadow-lg">
-                <History className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-gray-800">Upload History</h3>
-                <p className="text-sm text-gray-600">View all your previous file uploads</p>
-              </div>
+        {/* Empty State */}
+        {!selectedFile && (
+          <div className="bg-white rounded-xl p-12 text-center border border-gray-200">
+            <svg className="w-20 h-20 mx-auto text-gray-400 mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+            </svg>
+            <p className="text-gray-600 text-xl mb-4">
+              Upload Excel files to add company data to database
+            </p>
+            <div className="text-left max-w-lg mx-auto bg-gray-50 p-4 rounded-lg">
+              <p className="text-gray-700 text-sm font-semibold mb-2">How it works:</p>
+              <ol className="text-gray-600 text-sm space-y-1 list-decimal list-inside">
+                <li>Upload Excel file with company information</li>
+                <li>Data is automatically processed and validated</li>
+                <li>Companies are added to the database</li>
+                <li>Processed data from Excel Scraper is synced</li>
+                <li>View all upload history and manage data</li>
+              </ol>
             </div>
-            <button
-              onClick={openHistoryModal}
-              className="flex items-center px-4 py-2 bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-xl hover:shadow-lg transform hover:scale-105 transition-all duration-300"
-            >
-              <History className="w-4 h-4 mr-2" />
-              View History
-            </button>
           </div>
-        </div>
+        )}
 
         {/* History Modal */}
         {showHistoryModal && (
@@ -976,69 +989,6 @@ const Upload = () => {
                   </div>
                 )}
               </div>
-
-              {/* Modal Footer with Pagination */}
-              {filteredHistory.length > historyItemsPerPage && (
-                <div className="border-t border-gray-200 p-4 bg-gray-50">
-                  <div className="flex flex-col sm:flex-row items-center justify-between space-y-2 sm:space-y-0">
-                    <div className="text-gray-700 text-sm">
-                      <span className="font-bold text-purple-600">{historyIndexOfFirstItem + 1}</span> to{' '}
-                      <span className="font-bold text-purple-600">{Math.min(historyIndexOfLastItem, filteredHistory.length)}</span> of{' '}
-                      <span className="font-bold text-purple-600">{filteredHistory.length}</span> uploads
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button
-                        onClick={historyGoToPreviousPage}
-                        disabled={historyCurrentPage === 1}
-                        className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </button>
-                      
-                      <div className="flex space-x-1">
-                        {[...Array(historyTotalPages)].map((_, index) => {
-                          const pageNumber = index + 1;
-                          const isActive = pageNumber === historyCurrentPage;
-                          const isNearCurrent = Math.abs(pageNumber - historyCurrentPage) <= 2 || pageNumber === 1 || pageNumber === historyTotalPages;
-                          
-                          if (!isNearCurrent && pageNumber !== 1 && pageNumber !== historyTotalPages) {
-                            if (pageNumber === historyCurrentPage - 3 || pageNumber === historyCurrentPage + 3) {
-                              return (
-                                <span key={pageNumber} className="px-2 py-2 text-gray-500 text-sm">
-                                  ...
-                                </span>
-                              );
-                            }
-                            return null;
-                          }
-                          
-                          return (
-                            <button
-                              key={pageNumber}
-                              onClick={() => historyPaginate(pageNumber)}
-                              className={`px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
-                                isActive
-                                  ? 'bg-purple-600 text-white'
-                                  : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
-                              }`}
-                            >
-                              {pageNumber}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      
-                      <button
-                        onClick={historyGoToNextPage}
-                        disabled={historyCurrentPage === historyTotalPages}
-                        className="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}

@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
 
-const Layout = ({ children }) => {
+const Layout = ({ children, isNavigating }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
@@ -34,7 +34,16 @@ const Layout = ({ children }) => {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 lg:ml-64 min-h-screen">
+      <div className="flex-1 lg:ml-64 min-h-screen relative">
+        {/* Navigation Loading Overlay */}
+        {isNavigating && (
+          <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
+            <div className="flex flex-col items-center space-y-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+              <p className="text-gray-600 font-medium">Loading...</p>
+            </div>
+          </div>
+        )}
         <main className="p-4 sm:p-6 lg:p-8">
           <div className="max-w-7xl mx-auto">
             {children}

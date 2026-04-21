@@ -1,7 +1,8 @@
-import React from 'react';
-import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map } from 'lucide-react';
+import React, { useState } from 'react';
+import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight } from 'lucide-react';
 
 const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter = 'all' }) => {
+  const [expandedCompanies, setExpandedCompanies] = useState(new Set());
   // Helper function to truncate company names
   const truncateCompanyName = (name, maxChars = 20) => {
     if (!name) return '';
@@ -13,6 +14,35 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
     // Check character count and truncate if needed
     if (mainName.length <= maxChars) return mainName;
     return mainName.substring(0, maxChars) + '...';
+  };
+
+  // Toggle company name expansion
+  const toggleCompanyExpansion = (companyId) => {
+    setExpandedCompanies(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(companyId)) {
+        newSet.delete(companyId);
+      } else {
+        newSet.add(companyId);
+      }
+      return newSet;
+    });
+  };
+
+  // Get display name based on expansion state
+  const getDisplayName = (company) => {
+    const normalizedName = normalizeCompanyName(company.company);
+    if (expandedCompanies.has(company._id)) {
+      return normalizedName;
+    }
+    return truncateCompanyName(normalizedName);
+  };
+
+  // Check if company name should show expand button
+  const shouldShowExpandButton = (company) => {
+    const normalizedName = normalizeCompanyName(company.company);
+    const truncatedName = truncateCompanyName(normalizedName);
+    return normalizedName !== truncatedName;
   };
 
   // Helper function to truncate and split long text
@@ -198,8 +228,23 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                 {index + 1}
               </td>
               <td className="px-4 py-3">
-                <div className="font-medium text-gray-900" title={truncateCompanyName(normalizeCompanyName(company.company))}>
-                  {truncateCompanyName(normalizeCompanyName(company.company))}
+                <div className="flex items-center gap-1">
+                  <div className="font-medium text-gray-900" title={normalizeCompanyName(company.company)}>
+                    {getDisplayName(company)}
+                  </div>
+                  {shouldShowExpandButton(company) && (
+                    <button
+                      onClick={() => toggleCompanyExpansion(company._id)}
+                      className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition-all duration-200 flex-shrink-0"
+                      title={expandedCompanies.has(company._id) ? "Show less" : "Show full company name"}
+                    >
+                      {expandedCompanies.has(company._id) ? (
+                        <ChevronDown className="w-3 h-3" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3" />
+                      )}
+                    </button>
+                  )}
                 </div>
               </td>
               <td className="px-4 py-3 text-sm">
@@ -208,7 +253,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                     <div className="flex items-center gap-1">
                       <Phone className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
                       <span className="text-green-600 font-medium">
-                        {company.phone}
+                        {company.phone.split(',')[0].trim()}
                       </span>
                     </div>
                   ) : (
@@ -218,19 +263,11 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                     </div>
                   )}
                   {company.email && company.email.trim() !== '' ? (
-                    <div className="space-y-1">
-                      {company.email.split(',').map((email, emailIndex) => {
-                        const trimmedEmail = email.trim();
-                        if (!trimmedEmail) return null;
-                        return (
-                          <div key={emailIndex} className="flex items-center gap-1">
-                            <Mail className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                            <span className="text-blue-600">
-                              {trimmedEmail} {isValidEmail(trimmedEmail)}
-                            </span>
-                          </div>
-                        );
-                      })}
+                    <div className="flex items-center gap-1">
+                      <Mail className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                      <span className="text-blue-600">
+                        {company.email.split(',')[0].trim()}
+                      </span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1">
@@ -239,20 +276,16 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                     </div>
                   )}
                   {company.website && company.website.trim() !== '' ? (
-                    <div className="space-y-1">
-                      {splitLongText(company.website, 40).map((websitePart, websiteIndex) => (
-                        <div key={websiteIndex} className="flex items-center gap-1">
-                          <Globe className="w-3.5 h-3.5 text-purple-500 flex-shrink-0" />
-                          <a
-                            href={`http://${websitePart}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-purple-600 hover:text-purple-800 hover:underline"
-                          >
-                            {websitePart}
-                          </a>
-                        </div>
-                      ))}
+                    <div className="flex items-start gap-1">
+                      <Globe className="w-3.5 h-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
+                      <a
+                        href={company.website.split(',')[0].trim().startsWith('http') ? company.website.split(',')[0].trim() : `https://${company.website.split(',')[0].trim()}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-purple-600 hover:text-purple-800 hover:underline break-all max-w-xs"
+                      >
+                        {company.website.split(',')[0].trim()}
+                      </a>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1">

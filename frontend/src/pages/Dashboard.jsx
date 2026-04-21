@@ -105,7 +105,9 @@ const Dashboard = () => {
       }
     };
 
-    fetchCompanies();
+    // Add debounce to prevent rapid API calls during navigation
+    const debounceTimer = setTimeout(fetchCompanies, 300);
+    return () => clearTimeout(debounceTimer);
   }, [manualFilters]);
   return (
     <div className="space-y-6 animate-fadeIn">
