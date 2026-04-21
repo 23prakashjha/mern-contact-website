@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Bold, Italic, Underline, Link, Smile, Paperclip, Send, AlignLeft, AlignCenter, AlignRight, List, ListOrdered, Filter, Search, X } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
 
 const IndividualMessage = () => {
   const [formData, setFormData] = useState({
@@ -472,6 +473,7 @@ const IndividualMessage = () => {
 
   return (
     <div className="max-w-6xl mx-auto">
+      <Toaster position="top-right" />
       <div className="bg-white rounded-lg shadow-md p-6">
         <h1 className="text-2xl font-bold text-gray-800 mb-6">Send Messages</h1>
         

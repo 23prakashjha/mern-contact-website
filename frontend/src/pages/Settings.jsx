@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import toast, { Toaster } from 'react-hot-toast';
 
 const Settings = () => {
   const [settings, setSettings] = useState({
@@ -36,6 +37,7 @@ const Settings = () => {
 
   return (
     <div className="space-y-6">
+      <Toaster position="top-right" />
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-600 mt-1">Configure your outreach system and API settings.</p>

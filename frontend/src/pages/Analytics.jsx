@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Download, Calendar, TrendingUp, FileText, Filter } from 'lucide-react';
 import jsPDF from 'jspdf';
+import toast, { Toaster } from 'react-hot-toast';
 
 const Analytics = () => {
   const [stats, setStats] = useState({ total: 0, sent: 0, pending: 0, failed: 0 });
@@ -214,6 +215,7 @@ const Analytics = () => {
 
   return (
     <div className="space-y-6">
+      <Toaster position="top-right" />
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>

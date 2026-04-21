@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import Stats from '../components/Stats';
 import RecentActivity from '../components/RecentActivity';
 import QuickActions from '../components/QuickActions';
 import { Filter, Search, X } from 'lucide-react';
 import CompanyList from '../components/CompanyList';
+import toast, { Toaster } from 'react-hot-toast';
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
@@ -107,6 +109,7 @@ const Dashboard = () => {
   }, [manualFilters]);
   return (
     <div className="space-y-6 animate-fadeIn">
+      <Toaster position="top-right" />
       {/* Header Section */}
       <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center space-y-4 lg:space-y-0">

@@ -3,6 +3,7 @@ import axios from 'axios';
 import CompanyList from '../components/CompanyList';
 import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, MessageSquare, Send, Smartphone, AlertCircle, Trash2, Search, Filter, MapPin, Globe, Building, Users, TrendingUp, Calendar, Clock, ChevronDown, ChevronUp, Zap, Target, BarChart3, Activity, Sparkles, Star, Shield, Database, Layers, ZapOff, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import toast, { Toaster } from 'react-hot-toast';
 
 const History = () => {
   const [companies, setCompanies] = useState([]);
@@ -331,6 +332,7 @@ const History = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+      <Toaster position="top-right" />
       {/* Animated Background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-600/10 rounded-full blur-3xl animate-pulse"></div>

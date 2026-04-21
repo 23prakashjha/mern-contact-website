@@ -5,6 +5,7 @@ import axios from 'axios';
 import clsx from 'clsx';
 import * as XLSX from 'xlsx';
 import '../styles/ExcelScraper.css';
+import toast, { Toaster } from 'react-hot-toast';
 
 function ExcelScraper() {
   const [file, setFile] = useState(null);
@@ -469,6 +470,7 @@ function ExcelScraper() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+      <Toaster position="top-right" />
       {/* Header */}
       <header className="glass-effect sticky top-0 z-50 border-b border-white/20">
         <div className="container mx-auto px-4 py-4">

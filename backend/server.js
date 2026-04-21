@@ -4,6 +4,7 @@ const cors = require('cors');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const path = require('path');
+const puppeteer = require('puppeteer');
 require('dotenv').config();
 
 // Excel Scraper imports
@@ -17,6 +18,36 @@ const pdfParse = require('pdf-parse');
 const EmailService = require('./services/emailService');
 const WhatsAppService = require('./services/whatsappService');
 const SMSService = require('./services/smsService');
+
+// Add proxy rotation and user agent management for Justdial scraper
+class ProxyRotator {
+  constructor() {
+    this.userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
+    ];
+  }
+  
+  getRandomUserAgent() {
+    return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
+  }
+  
+  getRandomViewport() {
+    const viewports = [
+      { width: 1366, height: 768 },
+      { width: 1440, height: 900 },
+      { width: 1536, height: 864 },
+      { width: 1920, height: 1080 },
+      { width: 1280, height: 720 }
+    ];
+    return viewports[Math.floor(Math.random() * viewports.length)];
+  }
+}
+
+const proxyRotator = new ProxyRotator();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -291,6 +322,18 @@ const extractEmailsFromPDF = async (filePath) => {
         return [];
     }
 };
+
+// Helper function to clean category names for Justdial scraper
+function cleanCategoryName(category) {
+  if (!category) return '';
+  
+  return category
+    .replace(/-/g, ' ')  // Replace hyphens with spaces
+    .replace(/in\s*Sai\s*Kunj/gi, '')  // Remove 'in-Sai-Kunj'
+    .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+    .replace(/\b\w/g, l => l.toUpperCase())  // Capitalize first letter of each word
+    .trim();
+}
 
 // Scrape website for contact information
 const scrapeWebsite = async (url) => {
@@ -634,6 +677,2034 @@ const processExcelFile = async (filePath) => {
 const emailService = new EmailService();
 const whatsappService = new WhatsAppService();
 const smsService = new SMSService();
+
+// Justdial Scraper Service with Multi-Page Support
+class JustdialScraper {
+  constructor() {
+    this.browser = null;
+    this.page = null;
+  }
+
+  async initialize() {
+    // Add random delay to prevent rate limiting
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 3000));
+    
+    // Try multiple Chrome launch strategies
+    const launchOptions = [
+      {
+        // Strategy 1: Use Puppeteer's built-in Chrome
+        headless: "new",
+        protocolTimeout: 300000,
+        defaultViewport: null,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          '--disable-extensions',
+          '--disable-plugins',
+          '--disable-default-apps',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding',
+          '--disable-background-networking',
+          '--disable-blink-features=AutomationControlled',
+          '--disable-features=TranslateUI',
+          '--disable-ipc-flooding-protection',
+          '--disable-features=IsolateOrigins,site-per-process',
+          '--disable-site-isolation-trials',
+          '--disable-features=CrossSiteDocumentBlockingIfIsolating',
+          '--disable-features=CrossSiteDocumentBlockingAlways'
+        ]
+      },
+      {
+        // Strategy 2: Use system Chrome with executablePath
+        headless: "new",
+        protocolTimeout: 300000,
+        defaultViewport: null,
+        executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ]
+      },
+      {
+        // Strategy 3: Use system Chrome without executablePath
+        headless: "new",
+        protocolTimeout: 300000,
+        defaultViewport: null,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ]
+      }
+    ];
+    
+    let lastError = null;
+    for (const options of launchOptions) {
+      try {
+        console.log('Trying Chrome launch strategy:', options.executablePath ? 'System Chrome' : 'Puppeteer Chrome');
+        this.browser = await puppeteer.launch(options);
+        console.log('Chrome launched successfully!');
+        break;
+      } catch (error) {
+        console.log('Chrome launch strategy failed:', error.message);
+        lastError = error;
+      }
+    }
+    
+    if (!this.browser) {
+      throw new Error(`Failed to launch Chrome: ${lastError?.message || 'Unknown error'}`);
+    }
+    this.page = await this.browser.newPage();
+    
+    // Enhanced anti-detection script
+    await this.page.evaluateOnNewDocument(() => {
+      // Remove webdriver traces
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+      
+      // Override permissions API
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters)
+      );
+      
+      // Override plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [
+          {
+            0: { type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format" },
+            description: "Portable Document Format",
+            filename: "internal-pdf-viewer",
+            length: 1,
+            name: "Chrome PDF Plugin"
+          }
+        ],
+      });
+      
+      // Override languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+      });
+      
+      // Override platform
+      Object.defineProperty(navigator, 'platform', {
+        get: () => 'Win32',
+      });
+      
+      // Override chrome object
+      window.chrome = {
+        runtime: {},
+        loadTimes: function() {},
+        csi: function() {},
+        app: {}
+      };
+    });
+    
+    // Set random user agent
+    const userAgent = proxyRotator.getRandomUserAgent();
+    await this.page.setUserAgent(userAgent);
+    
+    // Set random viewport
+    const viewport = proxyRotator.getRandomViewport();
+    await this.page.setViewport(viewport);
+    
+    // Enhanced headers to look more like a real browser
+    await this.page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9,en-GB;q=0.8,en;q=0.7',
+      'Accept-Encoding': 'gzip, deflate, br, zstd',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Cache-Control': 'max-age=0',
+      'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1',
+      'DNT': '1',
+      'Connection': 'keep-alive'
+    });
+    
+    // Add random human-like delay
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 4000 + 2000));
+  }
+
+  async scrapeBusinessData(url, detectedCategory = '') {
+    try {
+      await this.initialize();
+      
+      // Store detected category globally for use in extraction
+      if (detectedCategory) {
+        await this.page.evaluate((category) => {
+          window.detectedCategory = category;
+        }, detectedCategory);
+      }
+      
+      console.log('Navigating to URL:', url);
+      
+      // Add initial delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 6000 + 4000));
+      
+      // Enhanced navigation with multiple attempts
+      let accessDenied = true;
+      let attempts = 0;
+      const maxAttempts = 5;
+      
+      while (accessDenied && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Attempt ${attempts} of ${maxAttempts}`);
+        
+        try {
+          if (attempts > 1) {
+            console.log('Waiting before retry to prevent rate limiting...');
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 10000 + 8000));
+          }
+          
+          // Navigate with different wait strategies
+          if (attempts === 1) {
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+          } else if (attempts === 2) {
+            await this.page.goto(url, { waitUntil: 'networkidle0', timeout: 45000 });
+          } else {
+            await this.page.goto(url, { waitUntil: 'load', timeout: 60000 });
+          }
+          
+          // Wait for content to load
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 3000));
+          
+          // Check for access denied
+          const pageTitle = await this.page.title();
+          const pageContent = await this.page.content();
+          
+          console.log('Page title:', pageTitle);
+          console.log('Current URL:', this.page.url());
+          
+          accessDenied = 
+            pageTitle.includes('Access Denied') ||
+            pageTitle.includes('403') ||
+            pageTitle.includes('Blocked') ||
+            pageTitle.includes('Robot Check') ||
+            pageTitle.includes('CAPTCHA') ||
+            pageTitle.includes('Security Check') ||
+            pageTitle.includes('Too Many Requests') ||
+            pageContent.includes('Access Denied') ||
+            pageContent.includes('403 Forbidden') ||
+            pageContent.includes('captcha') ||
+            pageContent.includes('robot') ||
+            pageContent.includes('security check') ||
+            pageContent.includes('rate limit') ||
+            pageContent.includes('too many requests') ||
+            pageContent.includes('cloudflare') ||
+            pageContent.includes('challenge');
+          
+          if (accessDenied) {
+            console.log('Access denied/rate limited detected, trying different approach...');
+            
+            if (attempts === 1) {
+              await this.page.evaluate(() => {
+                window.scrollTo(0, Math.floor(Math.random() * 500));
+                document.dispatchEvent(new MouseEvent('mousemove', {
+                  clientX: Math.random() * window.innerWidth,
+                  clientY: Math.random() * window.innerHeight
+                }));
+              });
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+            }
+          } else {
+            console.log('Successfully accessed the page!');
+            break;
+          }
+          
+        } catch (error) {
+          console.log(`Navigation attempt ${attempts} failed:`, error.message);
+          if (attempts >= maxAttempts) {
+            throw error;
+          }
+        }
+      }
+      
+      if (accessDenied) {
+        console.log('Still getting access denied after all attempts, attempting to extract anyway...');
+        try {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (e) {
+          console.log('Wait timeout, proceeding anyway...');
+        }
+      }
+      
+      // Use the new pagination handler to get all businesses
+      console.log('Starting pagination-aware scraping...');
+      const businessData = await this.handlePagination();
+      
+      // If no businesses found with pagination, try the old method as fallback
+      if (businessData.length === 0) {
+        console.log('No businesses found with pagination, trying fallback method...');
+        await this.enhancedAutoScroll();
+        const fallbackData = await this.extractBusinessesFromCurrentPage();
+        return fallbackData;
+      }
+    
+      console.log(`Found ${businessData.length} businesses`);
+      
+      // If no businesses found with specific selectors, try generic approach
+      if (businessData.length === 0) {
+        console.log('Trying generic data extraction approach...');
+        const genericData = await this.extractGenericData();
+        console.log(`Generic approach found ${genericData.length} businesses`);
+        return genericData;
+      }
+    
+      return businessData;
+    
+    } catch (error) {
+      console.error('Scraping error:', error);
+      
+      if (error.message.includes('Runtime.callFunctionOn timed out') || 
+          error.message.includes('protocolTimeout')) {
+        console.log('Timeout error detected, attempting graceful recovery...');
+        throw new Error(`Scraping timeout: The page took too long to respond. Please try again in a few minutes.`);
+      }
+      
+      if (error.message.includes('net::ERR_') || error.message.includes('Navigation timeout')) {
+        throw new Error(`Network error: Unable to reach the website. Please check your internet connection and try again.`);
+      }
+      
+      throw new Error(`Failed to scrape data: ${error.message}`);
+    } finally {
+      await this.close();
+    }
+  }
+
+  async handlePagination() {
+    console.log('Checking for pagination and loading more results...');
+    
+    let allBusinesses = [];
+    let currentPage = 1;
+    const maxPages = 100; // Increased limit to get more businesses
+    let loadMoreFound = true;
+    let consecutiveEmptyPages = 0;
+    const maxEmptyPages = 5; // Stop after 5 empty pages
+    
+    while (loadMoreFound && currentPage <= maxPages && allBusinesses.length < 200) {
+      console.log(`=== PROCESSING PAGE ${currentPage} COMPLETELY ===`);
+      
+      // Step 1: Wait for initial content to load
+      console.log(`Page ${currentPage}: Waiting for initial content to load...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Step 2: Scroll to end of page to trigger ALL lazy loading
+      console.log(`Page ${currentPage}: Scrolling to end to load ALL businesses...`);
+      await this.scrollToEndOfPage();
+      
+      // Step 3: Extract ALL businesses from current page
+      console.log(`Page ${currentPage}: Extracting ALL businesses from this page...`);
+      const pageBusinesses = await this.extractBusinessesFromCurrentPage();
+      console.log(`Page ${currentPage}: Found ${pageBusinesses.length} businesses`);
+      
+      // Step 4: Add all businesses from this page to our collection
+      console.log(`Page ${currentPage}: Adding ${pageBusinesses.length} businesses to collection...`);
+      const previousCount = allBusinesses.length;
+      allBusinesses.push(...pageBusinesses);
+      const newBusinessesCount = allBusinesses.length - previousCount;
+      console.log(`Page ${currentPage}: Total businesses so far: ${allBusinesses.length} (Added ${newBusinessesCount} new)`);
+      
+      // Step 5: Check if we've reached our target
+      if (allBusinesses.length >= 100) {
+        console.log(`Target achieved! Found ${allBusinesses.length} businesses.`);
+        break;
+      }
+      
+      // Step 6: Check for empty pages
+      if (pageBusinesses.length === 0) {
+        consecutiveEmptyPages++;
+        console.log(`Page ${currentPage}: Empty page detected (${consecutiveEmptyPages}/${maxEmptyPages})`);
+        if (consecutiveEmptyPages >= maxEmptyPages) {
+          console.log('Too many consecutive empty pages, stopping...');
+          break;
+        }
+      } else {
+        consecutiveEmptyPages = 0;
+      }
+      
+      // Step 5: Check if there are more pages to process
+      console.log(`Page ${currentPage}: Looking for next page or load more button...`);
+      loadMoreFound = await this.page.evaluate(() => {
+        // Look for "Load More" button
+        const loadMoreSelectors = [
+          'button[class*="load"]',
+          'button[class*="more"]',
+          'a[class*="load"]',
+          'a[class*="more"]',
+          'div[class*="load"] button',
+          'div[class*="more"] button',
+          '.load-more',
+          '.show-more',
+          '.view-more',
+          '[data-testid*="load"]',
+          '[data-testid*="more"]'
+        ];
+        
+        for (const selector of loadMoreSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.toLowerCase() || '';
+            if (text.includes('load') || text.includes('more') || text.includes('view')) {
+              console.log(`Found load more element: ${selector} - "${text}"`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              element.click();
+              return true;
+            }
+          }
+        }
+        
+        // Look for pagination links
+        const paginationSelectors = [
+          'a[href*="page-"]',
+          'a[class*="page"]',
+          'li[class*="page"] a',
+          '.pagination a',
+          '[data-testid*="page"]'
+        ];
+        
+        for (const selector of paginationSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.trim() || '';
+            const href = element.getAttribute('href') || '';
+            
+            // Look for next page link
+            if ((text.includes('Next') || text.includes('>') || href.includes('page-')) && 
+                !text.includes('Previous') && !text.includes('<')) {
+              console.log(`Found pagination link: ${selector} - "${text}" - ${href}`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              element.click();
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+      
+      // Step 6: Move to next page if available
+      if (loadMoreFound) {
+        console.log(`Page ${currentPage}: Moving to next page...`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for new content to load
+        currentPage++;
+        console.log(`=== PAGE ${currentPage - 1} COMPLETED ===`);
+      } else {
+        console.log(`Page ${currentPage}: No more pages found - scraping complete`);
+        console.log(`=== PAGE ${currentPage} COMPLETED - NO MORE PAGES ===`);
+      }
+    }
+    
+    console.log(`Total pages processed: ${currentPage - 1}`);
+    console.log(`Total businesses found: ${allBusinesses.length}`);
+    
+    return allBusinesses;
+  }
+
+  async scrollToEndOfPage() {
+    console.log('Scrolling to end of page to trigger lazy loading...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 5; // Reduced for faster processing
+        const maxScrollAttempts = 20; // Reduced for faster processing
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          // Scroll in smaller increments for better content detection
+          const scrollStep = Math.min(window.innerHeight, 800);
+          window.scrollBy(0, scrollStep);
+          totalHeight += scrollStep;
+          scrollAttempts++;
+          
+          // Check if new content has loaded
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          // Enhanced stopping conditions
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 100;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Page scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            // Wait for any remaining lazy-loaded content
+            setTimeout(() => {
+              // Scroll back to top to ensure all content is accessible
+              window.scrollTo(0, 0);
+              
+              // Trigger any scroll-based lazy loading at the top
+              setTimeout(() => {
+                window.scrollTo(0, 100);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(resolve, 1000);
+                }, 500);
+              }, 500);
+            }, 2000);
+          }
+        }, 500); // Faster scrolling for pagination
+      });
+    });
+  }
+
+  async extractBusinessesFromCurrentPage() {
+    return await this.page.evaluate(async () => {
+      try {
+        console.log('=== EXTRACTING BUSINESSES FROM CURRENT PAGE ===');
+        const businesses = [];
+        
+        // Use comprehensive selectors
+        let listings = [];
+        
+        const possibleSelectors = [
+          '.resultbox',
+          '[data-testid="result-card"]',
+          '.jsx-2622435384',
+          '.result-card',
+          '.listing-container',
+          '.jsx-3788266411',
+          'div[class*="jsx"]:has(h2)',
+          'div[class*="jsx"]:has(h3)',
+          'div[class*="result"]',
+          'div[class*="listing"]',
+          'div[class*="card"]',
+          'div[class*="business"]',
+          'div[class*="company"]',
+          'div[class*="store"]',
+          'div[class*="service"]',
+          'div[class*="vendor"]',
+          'div[class*="provider"]',
+          'article',
+          'section[class*="result"]',
+          'li[class*="result"]',
+          'div[class*="item"]',
+          'div[class*="entry"]',
+          'div[class*="contact"]:has([class*="phone"])',
+          'div[class*="info"]:has([class*="phone"])',
+          // Enhanced Justdial-specific selectors
+          'div[class*="jsx-"]:has([class*="phone"])',
+          'div[class*="jsx-"]:has([class*="tel"])',
+          'div[class*="jsx-"]:has(a[href*="tel:"])',
+          'div[class*="jsx-"]:has(span[title*="Call"])',
+          'div[class*="jsx-"]:has(div[title*="Call"])',
+          'div[class*="jsx-"]:has([data-testid*="phone"])',
+          'div[class*="jsx-"]:has([data-testid*="contact"])',
+          'div[class*="jsx-"]:has([class*="contact"])',
+          // More generic selectors for dynamic content
+          'div[class*="-"]:has(h2, h3, h4)',
+          'div[class*="-"]:has(.phone, .tel, .mobile)',
+          'div[class*="-"]:has(a[href*="tel:"])',
+          'section:has(h2, h3, h4)',
+          'article:has(h2, h3, h4)',
+          'li:has(h2, h3, h4)',
+          'li:has(.phone, .tel, .mobile)',
+          'li:has(a[href*="tel:"])'
+        ];
+        
+        for (const selector of possibleSelectors) {
+          const found = document.querySelectorAll(selector);
+          console.log(`Selector "${selector}": found ${found.length} elements`);
+          if (found.length > 0) {
+            listings = found;
+            console.log(`Using selector: ${selector} with ${found.length} listings`);
+            break;
+          }
+        }
+        
+        // Fallback: phone-based approach
+        if (listings.length === 0) {
+          console.log('Trying phone-based approach...');
+          const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+          const allElements = document.querySelectorAll('*');
+          const phoneElements = [];
+          
+          allElements.forEach(element => {
+            if (!element) return;
+            const text = element.textContent || '';
+            if (phoneRegex.test(text)) {
+              let parent = element;
+              for (let i = 0; i < 5; i++) {
+                if (parent && parent.tagName === 'BODY') break;
+                
+                const parentText = parent.textContent || '';
+                const hasPhone = phoneRegex.test(parentText);
+                const hasBusinessKeywords = /business|company|store|shop|service|electrician|doctor|restaurant|hotel/i.test(parentText);
+                
+                if (hasPhone && hasBusinessKeywords && parentText.length > 20 && parentText.length < 500) {
+                  phoneElements.push(parent);
+                  break;
+                }
+                
+                parent = parent.parentElement;
+              }
+            }
+          });
+          
+          const uniquePhoneElements = [...new Set(phoneElements)];
+          listings = uniquePhoneElements;
+          console.log(`Phone-based approach found ${listings.length} unique elements`);
+        }
+        
+        console.log('=== PROCESSING LISTINGS ===');
+        
+        for (const [index, listing] of listings.entries()) {
+          try {
+            console.log(`Processing listing ${index}:`, listing.tagName, listing.className);
+            
+            const business = {
+              name: '',
+              phone: '',
+              address: '',
+              category: '',
+              city: '',
+              image: ''
+            };
+            
+            // Extract Name
+            const nameSelectors = [
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              '.title', '.name', '[class*="name"]', 
+              '.company-name', '.store-name', '.business-name',
+              '.vendor-name', '.service-name', '.provider-name',
+              'span[class*="title"]', 'div[class*="title"]',
+              'a[class*="title"]', 'strong[class*="title"]',
+              '.resultbox h1', '.resultbox h2', '.resultbox h3',
+              '[data-testid*="name"]', '[class*="jsx"] h2', '[class*="jsx"] h3',
+              'b', 'strong', '.highlight', '.featured'
+            ];
+            
+            for (const selector of nameSelectors) {
+              const element = listing.querySelector(selector);
+              if (element) {
+                const text = element.textContent?.trim() || '';
+                const textLower = text.toLowerCase();
+                
+                // Enhanced validation for business names
+                const isValidBusinessName = text.length > 2 && text.length < 150 && 
+                    !/^\d+$/.test(text) && 
+                    !textLower.includes('ad') &&
+                    !textLower.includes('sponsored') &&
+                    !textLower.includes('promotion') &&
+                    !textLower.includes('advertisement') &&
+                    !text.match(/^(call|contact|phone|mobile)$/i) &&
+                    // Additional filters for common UI text
+                    !textLower.includes('photos') &&
+                    !textLower.includes('get the list') &&
+                    !textLower.includes('skip to main content') &&
+                    !textLower.includes('main content') &&
+                    !textLower.includes('navigation') &&
+                    !textLower.includes('search') &&
+                    !textLower.includes('filter') &&
+                    !textLower.includes('sort') &&
+                    !textLower.includes('category') &&
+                    !textLower.includes('location') &&
+                    !textLower.includes('direction') &&
+                    !textLower.includes('map') &&
+                    !textLower.includes('review') &&
+                    !textLower.includes('rating') &&
+                    !textLower.includes('contact') &&
+                    !textLower.includes('about') &&
+                    !textLower.includes('services') &&
+                    !textLower.includes('products') &&
+                    !textLower.includes('website') &&
+                    !textLower.includes('email') &&
+                    !textLower.includes('address') &&
+                    !textLower.includes('hours') &&
+                    !textLower.includes('timing') &&
+                    !textLower.includes('open') &&
+                    !textLower.includes('closed') &&
+                    !textLower.includes('book') &&
+                    !textLower.includes('appointment') &&
+                    !textLower.includes('book appointment') &&
+                    !textLower.includes('enquiry') &&
+                    !textLower.includes('details') &&
+                    !textLower.includes('information') &&
+                    !textLower.includes('description') &&
+                    !textLower.includes('features') &&
+                    !textLower.includes('amenities') &&
+                    !textLower.includes('facilities') &&
+                    // Filter out comma-separated UI elements
+                    !(textLower.includes(',') && (
+                      textLower.includes('photos') ||
+                      textLower.includes('get the') ||
+                      textLower.includes('skip to') ||
+                      textLower.includes('main content') ||
+                      textLower.includes('list of') ||
+                      textLower.includes('content') ||
+                      textLower.includes('search') ||
+                      textLower.includes('filter') ||
+                      textLower.includes('sort') ||
+                      textLower.includes('category') ||
+                      textLower.includes('location') ||
+                      textLower.includes('direction') ||
+                      textLower.includes('map') ||
+                      textLower.includes('review') ||
+                      textLower.includes('rating') ||
+                      textLower.includes('contact') ||
+                      textLower.includes('about') ||
+                      textLower.includes('services') ||
+                      textLower.includes('products') ||
+                      textLower.includes('website') ||
+                      textLower.includes('email') ||
+                      textLower.includes('address') ||
+                      textLower.includes('hours') ||
+                      textLower.includes('timing') ||
+                      textLower.includes('open') ||
+                      textLower.includes('closed') ||
+                      textLower.includes('book') ||
+                      textLower.includes('appointment') ||
+                      textLower.includes('book appointment') ||
+                      textLower.includes('enquiry') ||
+                      textLower.includes('details') ||
+                      textLower.includes('information') ||
+                      textLower.includes('description') ||
+                      textLower.includes('features') ||
+                      textLower.includes('amenities') ||
+                      textLower.includes('facilities')
+                    )) &&
+                    // Filter out names that start with common UI words
+                    !textLower.match(/^(photos|get|skip|main|content|search|filter|sort|category|location|direction|map|review|rating|contact|about|services|products|website|email|address|hours|timing|open|closed|book|appointment|book appointment|enquiry|details|information|description|features|amenities|facilities)/);
+                
+                if (isValidBusinessName) {
+                  business.name = text;
+                  console.log(`  -> Name found via "${selector}": "${text}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Extract Phone
+            const phoneSelectors = [
+              // Most common Justdial phone selectors (2024 updated)
+              '.contact-info .tel-number',
+              '.phone-number', '.tel-number', '.mobile-number',
+              '[data-testid="phone-number"]', '[data-testid*="phone"]',
+              '[class*="phone"]', 'a[href*="tel:"]',
+              '[class*="contact"] [class*="phone"]',
+              '[class*="tel"]', '[class*="mobile"]',
+              '.resultbox .phone', '.resultbox .tel', '.resultbox .mobile',
+              'span[class*="phone"]', 'div[class*="phone"]',
+              '.call-info', '.contact-details', '.vendor-phone',
+              
+              // Enhanced Justdial-specific phone selectors (2024 patterns)
+              'div[class*="jsx-"] [class*="phone"]',
+              'div[class*="jsx-"] [class*="tel"]',
+              'div[class*="jsx-"] [class*="mobile"]',
+              'div[class*="jsx-"] a[href*="tel:"]',
+              'div[class*="jsx-"] [data-testid*="phone"]',
+              'div[class*="jsx-"] span[title*="Call"]',
+              'div[class*="jsx-"] div[title*="Call"]',
+              'div[class*="jsx-"] [data-testid*="contact"]',
+              'div[class*="jsx-"] [class*="contact"]',
+              
+              // New 2024 Justdial patterns
+              'span[onclick*="tel:"]',
+              'div[onclick*="tel:"]',
+              'button[onclick*="tel:"]',
+              '.callnow',
+              '.call-btn',
+              '.phone-btn',
+              '.mobile-btn',
+              '[class*="callnow"]',
+              '[class*="call-btn"]',
+              '[class*="phone-btn"]',
+              '[class*="mobile-btn"]',
+              
+              // Justdial specific data attributes
+              '[data-phone]',
+              '[data-mobile]',
+              '[data-contact]',
+              '[data-tel]',
+              
+              // Generic phone selectors
+              '[title*="Call"]', '[title*="Phone"]', '[title*="Mobile"]',
+              '[aria-label*="Call"]', '[aria-label*="Phone"]', '[aria-label*="Mobile"]',
+              'a[onclick*="tel:"]',
+              'span[data-phone]', 'div[data-phone]',
+              
+              // Fallback: any element containing phone-like text
+              '*'
+            ];
+            
+            const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|\+91\s?\d{10}|91\s?\d{10}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}|[6-9]\d{9}/;
+            
+            // Helper function to format phone number to standard 10-digit Indian format
+            function formatPhoneNumber(phoneNumber) {
+              let cleanPhone = phoneNumber.replace(/\D/g, '');
+              
+              // Handle different phone number formats
+              if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+                // International format: +91XXXXXXXXXX
+                cleanPhone = cleanPhone.substring(2);
+              } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+                // National format: 0XXXXXXXXXX
+                cleanPhone = cleanPhone.substring(1);
+              } else if (cleanPhone.length === 11 && cleanPhone.startsWith('91')) {
+                // Another international format: 91XXXXXXXXXX
+                cleanPhone = cleanPhone.substring(2);
+              }
+              
+              // Validate that we have a 10-digit number starting with 6-9 (Indian mobile)
+              if (cleanPhone.length === 10 && /^[6-9]\d{9}$/.test(cleanPhone)) {
+                return cleanPhone;
+              }
+              
+              return null; // Invalid phone number
+            }
+            
+            console.log(`  -> DEBUG: Extracting phone from listing ${index}`);
+            
+            for (const selector of phoneSelectors) {
+              try {
+                const element = listing.querySelector(selector);
+                if (element) {
+                  const phoneText = element.textContent?.trim() || '';
+                  const phoneMatch = phoneText.match(phoneRegex);
+                  console.log(`  -> DEBUG: Found element with selector "${selector}": "${phoneText}"`);
+                  
+                  if (phoneMatch) {
+                    const formattedPhone = formatPhoneNumber(phoneMatch[0]);
+                    if (formattedPhone) {
+                      business.phone = formattedPhone;
+                      console.log(`  -> SUCCESS: Phone from "${selector}": "${phoneMatch[0]}" -> "${formattedPhone}"`);
+                      break;
+                    } else {
+                      console.log(`  -> FAILED: Phone format invalid: "${phoneMatch[0]}"`);
+                    }
+                  }
+                }
+              } catch (error) {
+                console.log(`  -> ERROR with selector "${selector}": ${error.message}`);
+              }
+            }
+            
+            // Fallback: extract phone from listing text
+            if (!business.phone) {
+              console.log(`  -> DEBUG: Trying fallback phone extraction from listing text`);
+              const listingText = listing.textContent || '';
+              console.log(`  -> DEBUG: Listing text (first 200 chars): "${listingText.substring(0, 200)}..."`);
+              const phoneMatches = listingText.match(phoneRegex);
+              console.log(`  -> DEBUG: Phone matches in text: ${phoneMatches ? phoneMatches.length : 0}`);
+              
+              if (phoneMatches) {
+                for (const phone of phoneMatches) {
+                  const formattedPhone = formatPhoneNumber(phone);
+                  if (formattedPhone) {
+                    business.phone = formattedPhone;
+                    console.log(`  -> SUCCESS: Phone from text: "${phone}" -> "${formattedPhone}"`);
+                    break;
+                  } else {
+                    console.log(`  -> FAILED: Invalid phone format from text: "${phone}"`);
+                  }
+                }
+              }
+            }
+            
+            // Enhanced fallback: search all child elements for phone numbers
+            if (!business.phone) {
+              console.log(`  -> DEBUG: Trying enhanced fallback - searching all child elements`);
+              const allElements = listing.querySelectorAll('*');
+              for (const element of allElements) {
+                const elementText = element.textContent?.trim() || '';
+                const phoneMatch = elementText.match(phoneRegex);
+                if (phoneMatch) {
+                  const formattedPhone = formatPhoneNumber(phoneMatch[0]);
+                  if (formattedPhone) {
+                    business.phone = formattedPhone;
+                    console.log(`  -> SUCCESS: Phone from child element: "${phoneMatch[0]}" -> "${formattedPhone}"`);
+                    break;
+                  }
+                }
+              }
+            }
+            
+            // Final fallback: check onclick attributes and data attributes
+            if (!business.phone) {
+              console.log(`  -> DEBUG: Trying final fallback - checking attributes`);
+              const clickableElements = listing.querySelectorAll('a, button, span, div[onclick], [data-phone], [data-mobile], [data-tel]');
+              for (const element of clickableElements) {
+                // Check onclick attributes
+                const onclick = element.getAttribute('onclick') || '';
+                const onclickMatch = onclick.match(/\d{10}/);
+                if (onclickMatch) {
+                  const formattedPhone = formatPhoneNumber(onclickMatch[0]);
+                  if (formattedPhone) {
+                    business.phone = formattedPhone;
+                    console.log(`  -> SUCCESS: Phone from onclick: "${onclickMatch[0]}" -> "${formattedPhone}"`);
+                    break;
+                  }
+                }
+                
+                // Check data attributes
+                const dataPhone = element.getAttribute('data-phone') || element.getAttribute('data-mobile') || element.getAttribute('data-tel') || '';
+                if (dataPhone) {
+                  const formattedPhone = formatPhoneNumber(dataPhone);
+                  if (formattedPhone) {
+                    business.phone = formattedPhone;
+                    console.log(`  -> SUCCESS: Phone from data attribute: "${dataPhone}" -> "${formattedPhone}"`);
+                    break;
+                  }
+                }
+                
+                // Check href attributes for tel: links
+                const href = element.getAttribute('href') || '';
+                if (href.includes('tel:')) {
+                  const phoneFromHref = href.replace('tel:', '').replace(/\D/g, '');
+                  const formattedPhone = formatPhoneNumber(phoneFromHref);
+                  if (formattedPhone) {
+                    business.phone = formattedPhone;
+                    console.log(`  -> SUCCESS: Phone from href: "${href}" -> "${formattedPhone}"`);
+                    break;
+                  }
+                }
+              }
+            }
+            
+            // Extract Address
+            const addressSelectors = [
+              '.address-info', '.address', '.location', '.addr',
+              '[data-testid="address"]', '[data-testid*="address"]',
+              '[class*="address"]', '[class*="location"]', '[class*="addr"]',
+              '.resultbox .address', '.resultbox .location', '.resultbox .addr',
+              'span[class*="address"]', 'div[class*="address"]',
+              '.shop-address', '.store-address', '.business-address',
+              '.vendor-address', '.contact-address', '.full-address',
+              '.map-location', '.geo-location', '.street-address'
+            ];
+            
+            for (const selector of addressSelectors) {
+              const element = listing.querySelector(selector);
+              if (element) {
+                const addressText = element.textContent?.trim() || '';
+                if (addressText.length > 10 && addressText.length < 500 &&
+                    (addressText.toLowerCase().includes('road') || 
+                     addressText.toLowerCase().includes('street') ||
+                     addressText.toLowerCase().includes('near') ||
+                     addressText.toLowerCase().includes('plot') ||
+                     addressText.toLowerCase().includes('shop') ||
+                     addressText.toLowerCase().includes('building') ||
+                     addressText.toLowerCase().includes('area') ||
+                     addressText.toLowerCase().includes('sector') ||
+                     /\d+\s*[A-Za-z]/.test(addressText) ||
+                     /\d+,\s*/.test(addressText))) {
+                  business.address = addressText;
+                  console.log(`  -> Address from "${selector}": "${addressText}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Extract Category
+            const categorySelectors = [
+              '.category-info', '.category', '[class*="category"]',
+              '[data-testid="category"]', '[data-testid*="category"]',
+              'span[class*="jsx"]', 'div[class*="jsx"]',
+              '.resultbox .category', '.resultbox span',
+              '.service-category', '.business-category', '.vendor-category',
+              '.type', '.service-type', '.business-type',
+              'span[class*="category"]', 'div[class*="category"]',
+              '.tag', '.label', '.badge', '.classification'
+            ];
+            
+            for (const selector of categorySelectors) {
+              const element = listing.querySelector(selector);
+              if (element) {
+                const categoryText = element.textContent?.trim() || '';
+                if (categoryText.length > 2 && categoryText.length < 80 &&
+                    !/\d{10}/.test(categoryText) &&
+                    !categoryText.toLowerCase().includes('ad') &&
+                    !categoryText.toLowerCase().includes('sponsored') &&
+                    !categoryText.toLowerCase().includes('promotion') &&
+                    !categoryText.match(/^(call|contact|phone|mobile|address)$/i) &&
+                    !categoryText.match(/^\d+$/)) {
+                  business.category = cleanCategoryName(categoryText);
+                  console.log(`  -> Category from "${selector}": "${business.category}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Extract City
+            if (business.address) {
+              const cities = ['delhi', 'mumbai', 'bangalore', 'chennai', 'kolkata', 'pune', 'hyderabad', 'ahmedabad', 'jaipur', 'lucknow', 'noida', 'gurgaon', 'faridabad', 'ghaziabad'];
+              for (const city of cities) {
+                if (business.address.toLowerCase().includes(city)) {
+                  business.city = city.charAt(0).toUpperCase() + city.slice(1);
+                  console.log(`  -> City from address: "${business.city}"`);
+                  break;
+                }
+              }
+            }
+            
+            if (!business.city) {
+              const urlMatch = window.location.href.match(/\/([A-Za-z]+)\//);
+              if (urlMatch) {
+                const cityFromUrl = urlMatch[1];
+                business.city = cityFromUrl.charAt(0).toUpperCase() + cityFromUrl.slice(1);
+                console.log(`  -> City from URL: "${business.city}"`);
+              }
+            }
+            
+            // Extract Image
+            const allImages = listing.querySelectorAll('img');
+            let imageSrc = null;
+            
+            console.log(`  -> Found ${allImages.length} images in listing`);
+            
+            // Force trigger lazy loading
+            allImages.forEach(img => {
+              if (img.dataset.src && !img.src) {
+                img.src = img.dataset.src;
+              }
+              if (img.dataset.lazy && !img.src) {
+                img.src = img.dataset.lazy;
+              }
+              if (img.dataset.original && !img.src) {
+                img.src = img.dataset.original;
+              }
+            });
+            
+            // Find the best business image
+            for (const imageElement of allImages) {
+              const rect = imageElement.getBoundingClientRect && imageElement.getBoundingClientRect();
+              if (rect && (rect.width < 50 || rect.height < 50)) {
+                continue;
+              }
+              
+              const possibleSources = [
+                imageElement.src,
+                imageElement.getAttribute('data-src'),
+                imageElement.getAttribute('data-lazy'),
+                imageElement.getAttribute('data-original'),
+                imageElement.getAttribute('data-srcset'),
+                imageElement.srcset,
+                imageElement.getAttribute('data-jpg'),
+                imageElement.getAttribute('data-webp'),
+                imageElement.getAttribute('data-image'),
+                imageElement.getAttribute('data-thumbnail'),
+                imageElement.getAttribute('data-photo'),
+                imageElement.getAttribute('data-picture'),
+                imageElement.getAttribute('data-lazy-src'),
+                imageElement.getAttribute('data-defer-src'),
+                imageElement.getAttribute('data-ll')
+              ];
+              
+              for (const source of possibleSources) {
+                if (source && !source.startsWith('data:') && source.trim() !== '' && source !== 'about:blank') {
+                  imageSrc = source;
+                  break;
+                }
+              }
+              
+              if (imageSrc && (imageSrc.includes('srcset') || imageSrc.includes('data-srcset'))) {
+                const srcsetMatch = imageSrc.match(/([^\s,]+)(?:\s+\d+w)?/);
+                if (srcsetMatch) {
+                  imageSrc = srcsetMatch[1];
+                }
+              }
+              
+              if (imageSrc && imageSrc !== 'about:blank') {
+                console.log(`  -> Raw image source found: "${imageSrc}"`);
+                break;
+              }
+            }
+            
+            // Process the image URL
+            if (imageSrc && imageSrc !== 'about:blank') {
+              if (imageSrc.startsWith('data:')) {
+                console.log(`  -> Skipping data URI`);
+              } else {
+                let cleanImageUrl = imageSrc.trim();
+                cleanImageUrl = cleanImageUrl.split('?')[0];
+                
+                if (cleanImageUrl.includes('justdial') || cleanImageUrl.includes('jdimages')) {
+                  if (cleanImageUrl.includes('thumb') || cleanImageUrl.includes('small') || cleanImageUrl.includes('medium')) {
+                    cleanImageUrl = cleanImageUrl.replace(/thumb|small|medium/g, 'large');
+                  }
+                }
+                
+                business.image = cleanImageUrl;
+                console.log(`  -> Final image URL: "${business.image}"`);
+              }
+            } else {
+              business.image = 'N/A';
+              console.log(`  -> No valid image found, setting to N/A`);
+            }
+            
+            // Add business to results if it has meaningful data
+            if (business.name || business.phone) {
+              businesses.push(business);
+              console.log(`  -> Added business: "${business.name}" with phone: "${business.phone}" (Image: ${business.image})`);
+            } else {
+              console.log(`  -> Skipping listing ${index}: No valid business data found`);
+            }
+            
+          } catch(e) {
+            console.log(`Error processing listing ${index}:`, e.message);
+          }
+        }
+        
+        console.log(`=== EXTRACTION COMPLETE ===`);
+        console.log(`Total businesses extracted: ${businesses.length}`);
+        
+        return businesses;
+        
+      } catch (error) {
+        console.error('Error in extractBusinessesFromCurrentPage:', error);
+        return [];
+      }
+    });
+  }
+
+  async enhancedAutoScroll() {
+    console.log('Starting enhanced automatic scrolling for dynamic content...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 10;
+        const maxScrollAttempts = 40;
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 100;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            setTimeout(() => {
+              window.scrollTo(0, 0);
+              
+              setTimeout(() => {
+                window.scrollTo(0, 100);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(resolve, 2000);
+                }, 1000);
+              }, 1000);
+            }, 3000);
+          }
+        }, 800);
+      });
+    });
+  }
+
+  async extractGenericData() {
+    return await this.page.evaluate(() => {
+      try {
+        console.log('=== ENHANCED GENERIC DATA EXTRACTION ===');
+        const businesses = [];
+        
+        const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/g;
+        
+        // Helper function to format phone number to standard 10-digit Indian format
+        function formatPhoneNumber(phoneNumber) {
+          let cleanPhone = phoneNumber.replace(/\D/g, '');
+          
+          // Handle different phone number formats
+          if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+            // International format: +91XXXXXXXXXX
+            cleanPhone = cleanPhone.substring(2);
+          } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+            // National format: 0XXXXXXXXXX
+            cleanPhone = cleanPhone.substring(1);
+          } else if (cleanPhone.length === 11 && cleanPhone.startsWith('91')) {
+            // Another international format: 91XXXXXXXXXX
+            cleanPhone = cleanPhone.substring(2);
+          }
+          
+          // Validate that we have a 10-digit number starting with 6-9 (Indian mobile)
+          if (cleanPhone.length === 10 && /^[6-9]\d{9}$/.test(cleanPhone)) {
+            return cleanPhone;
+          }
+          
+          return null; // Invalid phone number
+        }
+        
+        const allText = document.body ? document.body.innerText : '';
+        let phones = allText.match(phoneRegex) || [];
+        
+        phones = [...new Set(phones.map(phone => formatPhoneNumber(phone)).filter(phone => phone !== null))];
+        
+        console.log('Found unique phone numbers:', phones.length);
+        
+        const potentialCards = document.querySelectorAll(
+          'div[class*="jsx"], div[class*="result"], div[class*="listing"], div[class*="card"], div[class*="company"], div[class*="store"], ' +
+          'article, section[class*="business"], div[class*="service"], div[class*="provider"], ' +
+          'div[class*="contact"], div[class*="info"], li[class*="result"], div[class*="item"]'
+        );
+        
+        console.log('Potential cards found:', potentialCards.length);
+        
+        const structuredData = [];
+        const usedPhones = new Set();
+        
+        potentialCards.forEach((card, index) => {
+          if (!card) return;
+          const cardText = card.textContent || '';
+          const phoneMatches = cardText.match(phoneRegex);
+          
+          if (phoneMatches && phoneMatches.length > 0) {
+            const formattedPhone = formatPhoneNumber(phoneMatches[0]);
+            
+            if (!formattedPhone || usedPhones.has(formattedPhone)) return;
+            usedPhones.add(formattedPhone);
+            
+            const business = {
+              name: '',
+              phone: formattedPhone,
+              address: '',
+              category: '',
+              city: '',
+              rating: '',
+              image: '',
+              website: ''
+            };
+            
+            // Enhanced name extraction
+            const nameSelectors = [
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              '.title', '.name', '[class*="name"]', 
+              '.company-name', '.store-name', '.business-name',
+              '.provider-name', '.service-name',
+              'span[class*="jsx"]', 'div[class*="jsx"]',
+              'a[class*="jsx"]', 'strong', 'b'
+            ];
+            
+            for (const selector of nameSelectors) {
+              const elements = card.querySelectorAll(selector);
+              for (const element of elements) {
+                if (!element) continue;
+                const text = element.textContent?.trim() || '';
+                if (text.length > 3 && text.length < 100 && 
+                    !/^\d/.test(text) && !phoneRegex.test(text) &&
+                    !text.toLowerCase().includes('ad') &&
+                    !text.toLowerCase().includes('sponsored')) {
+                  business.name = text;
+                  console.log(`  -> Name found via "${selector}": "${text}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Additional category extraction
+            if (!business.category) {
+              const listingText = card?.textContent || '';
+              const categoryKeywords = ['electrician', 'electrical', 'contractor', 'service', 'repair', 'installation', 'wiring'];
+              const lines = listingText.split('\n');
+              
+              for (const line of lines) {
+                const cleanLine = line.trim();
+                if (categoryKeywords.some(keyword => cleanLine.toLowerCase().includes(keyword)) && 
+                    cleanLine.length > 3 && cleanLine.length < 30 &&
+                    !/\d{10}/.test(cleanLine)) {
+                  business.category = cleanCategoryName(cleanLine);
+                  console.log(`  -> Category from text: "${business.category}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Fallback: extract category from URL
+            if (!business.category) {
+              const urlMatch = window.location.href.match(/\/([a-zA-Z-]+)\/([a-zA-Z-]+)$/);
+              if (urlMatch) {
+                business.category = cleanCategoryName(urlMatch[2]);
+                console.log(`  -> Category from URL: "${business.category}"`);
+              }
+            }
+            
+            // Final fallback: use detected category if available
+            if (!business.category && window.detectedCategory) {
+              business.category = window.detectedCategory;
+              console.log(`  -> Category from detected category: "${business.category}"`);
+            }
+            
+            // Set image to N/A if not found
+            if (!business.image) {
+              business.image = 'N/A';
+            }
+            
+            // Add business to structured data if it has valid info
+            if (business.name || business.phone) {
+              structuredData.push(business);
+              console.log(`  -> Added structured business: "${business.name}" with phone: "${business.phone}" (Image: ${business.image})`);
+            }
+          }
+        });
+        
+        console.log('Structured data found:', structuredData.length);
+        
+        // Remove duplicates
+        const uniqueBusinesses = [];
+        const seenPhones = new Set();
+        const seenNames = new Set();
+        
+        structuredData.forEach(business => {
+          const phoneKey = business.phone || '';
+          const nameKey = business.name ? business.name.toLowerCase().trim() : '';
+          
+          if (!seenPhones.has(phoneKey) && !seenNames.has(nameKey)) {
+            seenPhones.add(phoneKey);
+            seenNames.add(nameKey);
+            uniqueBusinesses.push(business);
+          }
+        });
+        
+        console.log(`Unique businesses after deduplication: ${uniqueBusinesses.length}`);
+        
+        return uniqueBusinesses;
+        
+      } catch (error) {
+        console.error('Error in generic data extraction:', error);
+        return [];
+      }
+    });
+  }
+
+  async close() {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+      this.page = null;
+    }
+  }
+}
+
+// Enhanced Bulk Scraper Class for 250-350 businesses
+class BulkJustdialScraper extends JustdialScraper {
+  constructor() {
+    super();
+    this.targetCount = 300; // Target 250-350 businesses
+    this.minCount = 250;
+    this.maxCount = 350;
+    this.progressCallback = null;
+  }
+
+  setProgressCallback(callback) {
+    this.progressCallback = callback;
+  }
+
+  async scrapeBulkBusinessData(url) {
+    try {
+      await this.initialize();
+      
+      console.log(`Starting bulk scraping for ${this.minCount}-${this.maxCount} businesses from:`, url);
+      
+      // Add initial delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 6000 + 4000));
+      
+      // Enhanced navigation with multiple attempts
+      let accessDenied = true;
+      let attempts = 0;
+      const maxAttempts = 8; // Increased attempts for bulk scraping
+      
+      while (accessDenied && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Bulk scraping attempt ${attempts} of ${maxAttempts}`);
+        
+        try {
+          if (attempts > 1) {
+            console.log('Waiting before bulk retry to prevent rate limiting...');
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 15000 + 10000));
+          }
+          
+          // Navigate with different wait strategies
+          if (attempts === 1) {
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          } else if (attempts === 2) {
+            await this.page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+          } else {
+            await this.page.goto(url, { waitUntil: 'load', timeout: 90000 });
+          }
+          
+          // Wait for content to load
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 8000 + 5000));
+          
+          // Check for access denied
+          const pageTitle = await this.page.title();
+          const pageContent = await this.page.content();
+          
+          console.log('Bulk scraping - Page title:', pageTitle);
+          console.log('Bulk scraping - Current URL:', this.page.url());
+          
+          accessDenied = 
+            pageTitle.includes('Access Denied') ||
+            pageTitle.includes('403') ||
+            pageTitle.includes('Blocked') ||
+            pageTitle.includes('Robot Check') ||
+            pageTitle.includes('CAPTCHA') ||
+            pageTitle.includes('Security Check') ||
+            pageTitle.includes('Too Many Requests') ||
+            pageContent.includes('Access Denied') ||
+            pageContent.includes('403 Forbidden') ||
+            pageContent.includes('captcha') ||
+            pageContent.includes('robot') ||
+            pageContent.includes('security check') ||
+            pageContent.includes('rate limit') ||
+            pageContent.includes('too many requests') ||
+            pageContent.includes('cloudflare') ||
+            pageContent.includes('challenge');
+          
+          if (accessDenied) {
+            console.log('Bulk scraping - Access denied/rate limited detected, trying different approach...');
+            
+            if (attempts <= 3) {
+              await this.page.evaluate(() => {
+                window.scrollTo(0, Math.floor(Math.random() * 800));
+                document.dispatchEvent(new MouseEvent('mousemove', {
+                  clientX: Math.random() * window.innerWidth,
+                  clientY: Math.random() * window.innerHeight
+                }));
+              });
+              await new Promise(resolve => setTimeout(resolve, 5000));
+              await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+            }
+          } else {
+            console.log('Bulk scraping - Successfully accessed the page!');
+            break;
+          }
+          
+        } catch (error) {
+          console.log(`Bulk scraping navigation attempt ${attempts} failed:`, error.message);
+          if (attempts >= maxAttempts) {
+            throw error;
+          }
+        }
+      }
+      
+      if (accessDenied) {
+        console.log('Bulk scraping - Still getting access denied after all attempts, attempting to extract anyway...');
+        try {
+          await new Promise(resolve => setTimeout(resolve, 8000));
+        } catch (e) {
+          console.log('Bulk scraping - Wait timeout, proceeding anyway...');
+        }
+      }
+      
+      // Use enhanced bulk pagination handler
+      console.log('Starting enhanced bulk pagination-aware scraping...');
+      const businessData = await this.handleBulkPagination();
+      
+      // If no businesses found with bulk pagination, try enhanced methods
+      if (businessData.length === 0) {
+        console.log('Bulk scraping - No businesses found with pagination, trying enhanced fallback methods...');
+        await this.enhancedBulkAutoScroll();
+        const fallbackData = await this.extractBusinessesFromCurrentPage();
+        return fallbackData;
+      }
+    
+      console.log(`Bulk scraping completed - Found ${businessData.length} businesses`);
+      
+      // If still not enough businesses, try generic approach
+      if (businessData.length < this.minCount) {
+        console.log('Bulk scraping - Trying generic data extraction approach to reach target...');
+        const genericData = await this.extractGenericData();
+        console.log(`Generic approach found ${genericData.length} additional businesses`);
+        
+        // Combine, clean, and deduplicate
+        const cleanedBusinessData = businessData.map(b => this.cleanAndValidateBusiness(b));
+        const cleanedGenericData = genericData.map(b => this.cleanAndValidateBusiness(b));
+        const combinedData = this.deduplicateBusinesses([...cleanedBusinessData, ...cleanedGenericData]);
+        console.log(`Combined and deduplicated: ${combinedData.length} businesses`);
+        
+        // Ensure we have at least 100 unique businesses to match Justdial's actual count
+        if (combinedData.length < 100) {
+          console.log(`Warning: Only ${combinedData.length} unique businesses found, which is less than the target 100+ from Justdial`);
+        }
+        
+        return combinedData.slice(0, this.maxCount);
+      }
+    
+      return businessData.slice(0, this.maxCount);
+    
+    } catch (error) {
+      console.error('Bulk scraping error:', error);
+      
+      if (error.message.includes('Runtime.callFunctionOn timed out') || 
+          error.message.includes('protocolTimeout')) {
+        console.log('Bulk scraping timeout error detected, attempting graceful recovery...');
+        throw new Error(`Bulk scraping timeout: The page took too long to respond. Please try again in a few minutes.`);
+      }
+      
+      if (error.message.includes('net::ERR_') || error.message.includes('Navigation timeout')) {
+        throw new Error(`Bulk scraping network error: Unable to reach the website. Please check your internet connection and try again.`);
+      }
+      
+      throw new Error(`Failed to bulk scrape data: ${error.message}`);
+    } finally {
+      await this.close();
+    }
+  }
+
+  async handleBulkPagination() {
+    console.log('Starting enhanced bulk pagination for maximum data extraction...');
+    
+    let allBusinesses = [];
+    let currentPage = 1;
+    const maxPages = 100; // Increased for bulk scraping
+    let loadMoreFound = true;
+    let lastPageBusinessCount = 0;
+    let consecutiveEmptyPages = 0;
+    const maxEmptyPages = 10; // Increased from 5 to 10 for better scraping
+    let noNewContentCount = 0;
+    const maxNoNewContent = 8; // Stop after 8 pages with no new content
+    
+    while (loadMoreFound && currentPage <= maxPages && allBusinesses.length < this.maxCount) {
+      const progress = Math.min((allBusinesses.length / this.minCount) * 100, 100);
+      console.log(`=== BULK PROCESSING PAGE ${currentPage} - Progress: ${progress.toFixed(1)}% (${allBusinesses.length}/${this.minCount}) ===`);
+      
+      if (this.progressCallback) {
+        this.progressCallback({
+          current: allBusinesses.length,
+          target: this.minCount,
+          percentage: progress,
+          page: currentPage,
+          status: 'processing'
+        });
+      }
+      
+      // Step 1: Wait for initial content to load
+      console.log(`Bulk Page ${currentPage}: Waiting for initial content to load...`);
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      
+      // Step 2: Enhanced scrolling for bulk data
+      console.log(`Bulk Page ${currentPage}: Enhanced scrolling for maximum data extraction...`);
+      await this.enhancedBulkScroll();
+      
+      // Step 3: Extract ALL businesses from current page
+      console.log(`Bulk Page ${currentPage}: Extracting ALL businesses from this page...`);
+      const pageBusinesses = await this.extractBusinessesFromCurrentPage();
+      console.log(`Bulk Page ${currentPage}: Found ${pageBusinesses.length} businesses`);
+      
+      // Step 4: Add all businesses from this page to our collection
+      console.log(`Bulk Page ${currentPage}: Adding ${pageBusinesses.length} businesses to collection...`);
+      const previousCount = allBusinesses.length;
+      allBusinesses.push(...pageBusinesses);
+      const newBusinessesCount = allBusinesses.length - previousCount;
+      console.log(`Bulk Page ${currentPage}: Total businesses so far: ${allBusinesses.length} (Added ${newBusinessesCount} new)`);
+      
+      // Check if we've reached our target
+      if (allBusinesses.length >= this.minCount) {
+        console.log(`Bulk scraping target achieved! Found ${allBusinesses.length} businesses.`);
+        if (this.progressCallback) {
+          this.progressCallback({
+            current: allBusinesses.length,
+            target: this.minCount,
+            percentage: 100,
+            page: currentPage,
+            status: 'completed'
+          });
+        }
+        break;
+      }
+      
+      // Step 5: Check for new content
+      if (newBusinessesCount === 0) {
+        noNewContentCount++;
+        console.log(`Bulk Page ${currentPage}: No new businesses found (${noNewContentCount}/${maxNoNewContent})`);
+        if (noNewContentCount >= maxNoNewContent) {
+          console.log('Bulk scraping: Too many pages with no new content, stopping...');
+          break;
+        }
+      } else {
+        noNewContentCount = 0;
+      }
+      
+      // Step 6: Check if we should continue based on empty pages
+      if (pageBusinesses.length === 0) {
+        consecutiveEmptyPages++;
+        console.log(`Bulk Page ${currentPage}: Empty page detected (${consecutiveEmptyPages}/${maxEmptyPages})`);
+        if (consecutiveEmptyPages >= maxEmptyPages) {
+          console.log('Bulk scraping: Too many consecutive empty pages, stopping...');
+          break;
+        }
+      } else {
+        consecutiveEmptyPages = 0;
+        lastPageBusinessCount = pageBusinesses.length;
+      }
+      
+      // Step 7: Check for more pages or load more buttons
+      console.log(`Bulk Page ${currentPage}: Looking for next page or load more button...`);
+      loadMoreFound = await this.page.evaluate(() => {
+        // Enhanced Load More button detection
+        const loadMoreSelectors = [
+          'button[class*="load"]',
+          'button[class*="more"]',
+          'a[class*="load"]',
+          'a[class*="more"]',
+          'div[class*="load"] button',
+          'div[class*="more"] button',
+          '.load-more',
+          '.show-more',
+          '.view-more',
+          '.more-results',
+          '.loadmore',
+          '.showmore',
+          '[data-testid*="load"]',
+          '[data-testid*="more"]',
+          '[class*="jsx"]:has(button)',
+          'div[class*="jsx"] button',
+          'span[class*="jsx"] button',
+          // More specific Justdial selectors
+          'button[class*="result"]',
+          'button[class*="page"]',
+          'a[onclick*="more"]',
+          'button[onclick*="more"]',
+          'div[class*="pagination"] button',
+          'div[class*="pagination"] a'
+        ];
+        
+        // First try to find and click load more buttons
+        for (const selector of loadMoreSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.toLowerCase() || '';
+            const isVisible = element.offsetParent !== null;
+            
+            if (isVisible && (
+              text.includes('load') || 
+              text.includes('more') || 
+              text.includes('view') ||
+              text.includes('show') ||
+              text.includes('next') ||
+              text.includes('continue')
+            )) {
+              console.log(`Bulk found load more element: ${selector} - "${text}" - Visible: ${isVisible}`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              setTimeout(() => element.click(), 100);
+              return true;
+            }
+          }
+        }
+        
+        // Try to find pagination links
+        const paginationSelectors = [
+          'a[href*="page-"]',
+          'a[class*="page"]',
+          'li[class*="page"] a',
+          '.pagination a',
+          '[data-testid*="page"]',
+          'div[class*="pagination"] a:not([class*="active"])',
+          'ul[class*="pagination"] a'
+        ];
+        
+        for (const selector of paginationSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.trim() || '';
+            const href = element.getAttribute('href') || '';
+            const isVisible = element.offsetParent !== null;
+            
+            if (isVisible && (
+              (text.includes('Next') || text.includes('>') || text.includes('»') || href.includes('page-')) && 
+              !text.includes('Previous') && !text.includes('<') && !text.includes('«')
+            )) {
+              console.log(`Bulk found pagination link: ${selector} - "${text}" - ${href}`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              setTimeout(() => element.click(), 100);
+              return true;
+            }
+          }
+        }
+        
+        // Try to scroll down to trigger lazy loading
+        const currentScroll = window.scrollY;
+        const maxScroll = document.body.scrollHeight - window.innerHeight;
+        
+        if (currentScroll < maxScroll - 500) {
+          console.log('Bulk: Scrolling down to trigger more content...');
+          window.scrollTo({ top: currentScroll + 800, behavior: 'smooth' });
+          setTimeout(() => {
+            window.scrollTo({ top: maxScroll, behavior: 'smooth' });
+          }, 500);
+          return true;
+        }
+        
+        return false;
+      });
+      
+      // Step 8: Move to next page if available
+      if (loadMoreFound) {
+        console.log(`Bulk Page ${currentPage}: Moving to next page...`);
+        await new Promise(resolve => setTimeout(resolve, 8000)); // Longer wait for bulk scraping
+        currentPage++;
+        console.log(`=== BULK PAGE ${currentPage - 1} COMPLETED ===`);
+      } else {
+        console.log(`Bulk Page ${currentPage}: No more pages found - scraping complete`);
+        console.log(`=== BULK PAGE ${currentPage} COMPLETED - NO MORE PAGES ===`);
+      }
+    }
+    
+    console.log(`Bulk scraping - Total pages processed: ${currentPage - 1}`);
+    console.log(`Bulk scraping - Total businesses found: ${allBusinesses.length}`);
+    
+    // Clean and deduplicate all collected businesses
+    const cleanedBusinesses = allBusinesses.map(b => this.cleanAndValidateBusiness(b));
+    const uniqueBusinesses = this.deduplicateBusinesses(cleanedBusinesses);
+    
+    console.log(`Bulk scraping - After deduplication: ${uniqueBusinesses.length} unique businesses`);
+    
+    // Ensure minimum 100 businesses if possible to match Justdial's actual count
+    if (uniqueBusinesses.length < 100 && uniqueBusinesses.length < allBusinesses.length) {
+      console.log('Bulk scraping - Trying to include more businesses to reach minimum 100...');
+      // If we filtered out too many, relax some validation criteria
+      const relaxedBusinesses = this.deduplicateBusinessesRelaxed(allBusinesses);
+      if (relaxedBusinesses.length > uniqueBusinesses.length) {
+        console.log(`Bulk scraping - Using relaxed criteria: ${relaxedBusinesses.length} businesses`);
+        return relaxedBusinesses.slice(0, this.maxCount);
+      }
+    }
+    
+    return uniqueBusinesses.slice(0, this.maxCount);
+  }
+
+  async enhancedBulkScroll() {
+    console.log('Starting enhanced bulk scrolling for maximum content loading...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 15; // Increased from 10 for bulk
+        const maxScrollAttempts = 60; // Increased from 40 for bulk
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          // Slower, more thorough scrolling for bulk
+          const scrollStep = Math.min(window.innerHeight, 400); // Reduced from 600
+          window.scrollBy(0, scrollStep);
+          totalHeight += scrollStep;
+          scrollAttempts++;
+          
+          // Check if new content has loaded
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          // Enhanced stopping conditions for bulk
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 200;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Bulk page scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            // Enhanced wait for lazy-loaded content
+            setTimeout(() => {
+              // Scroll back to top to ensure all content is accessible
+              window.scrollTo(0, 0);
+              
+              // Trigger any scroll-based lazy loading at the top
+              setTimeout(() => {
+                window.scrollTo(0, 300);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(() => {
+                    // Final scroll to bottom to ensure everything is loaded
+                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                    setTimeout(resolve, 3000);
+                  }, 1500);
+                }, 1500);
+              }, 2000);
+            }, 5000); // Increased from 4000
+          }
+        }, 300); // Slower scrolling from 400
+      });
+    });
+  }
+
+  async enhancedBulkAutoScroll() {
+    console.log('Starting enhanced bulk automatic scrolling for dynamic content...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 15;
+        const maxScrollAttempts = 80;
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          const scrollStep = Math.min(window.innerHeight, 500);
+          window.scrollBy(0, scrollStep);
+          totalHeight += scrollStep;
+          scrollAttempts++;
+          
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 200;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Enhanced bulk scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            setTimeout(() => {
+              window.scrollTo(0, 0);
+              
+              setTimeout(() => {
+                window.scrollTo(0, 200);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(resolve, 3000);
+                }, 1500);
+              }, 1500);
+            }, 5000);
+          }
+        }, 600);
+      });
+    });
+  }
+
+  deduplicateBusinesses(businesses) {
+    console.log(`Starting deduplication for ${businesses.length} businesses...`);
+    const uniqueBusinesses = [];
+    const seenExactBusinesses = new Set(); // For exact duplicates only
+    
+    businesses.forEach((business, index) => {
+      const phoneKey = business.phone || '';
+      const nameKey = business.name ? business.name.toLowerCase().trim() : '';
+      const addressKey = business.address ? business.address.toLowerCase().trim() : '';
+      
+      // Enhanced validation - check if business has meaningful data
+      const hasValidName = nameKey && nameKey.length > 2 && !nameKey.match(/^(call|contact|phone|mobile|address|unknown|n\/a)$/i);
+      const hasValidPhone = phoneKey && phoneKey.length === 10 && /^[6-9]\d{9}$/.test(phoneKey);
+      const hasValidAddress = addressKey && addressKey.length > 10;
+      
+      // Additional validation to filter out pagination and navigation elements
+      const isPaginationElement = nameKey && (
+        nameKey.includes('more') ||
+        nameKey.includes('whatsapp') ||
+        nameKey.includes('show') ||
+        nameKey.includes('view') ||
+        nameKey.includes('next') ||
+        nameKey.includes('previous') ||
+        nameKey.includes('page') ||
+        nameKey.includes('load') ||
+        nameKey.match(/^\d+\s*more$/i) ||
+        nameKey.match(/^\d+$/) ||
+        nameKey.match(/^(\d+,\s*)+\d+\s*more$/i) ||
+        nameKey.match(/^(whatsapp|instagram|facebook|twitter|youtube|linkedin)/i) ||
+        nameKey.match(/^(share|follow|connect|message|chat|call)$/i) ||
+        nameKey.match(/^(menu|home|back|close|cancel|ok|yes|no)$/i) ||
+        nameKey.match(/^(\w+,\s*)+\d+\s*more$/i)
+      );
+      
+      // Business must have at least name + phone, or name + address to be considered valid
+      // AND must not be a pagination/navigation element
+      const isValidBusiness = !isPaginationElement && ((hasValidName && hasValidPhone) || (hasValidName && hasValidAddress));
+      
+      if (!isValidBusiness) {
+        const reason = isPaginationElement ? 'Pagination/Navigation element' : 'Invalid business data';
+        console.log(`-> Filtering out ${reason} ${index}: "${business.name}" (Phone: ${business.phone}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+        return;
+      }
+      
+      // Create unique key for exact duplicate detection (same name + same phone + same address)
+      const exactBusinessKey = `${nameKey}|${phoneKey}|${addressKey}`;
+      
+      // Allow same business names with different phone numbers or addresses
+      // Only filter out exact duplicates (same name + same phone + same address)
+      const isExactDuplicate = seenExactBusinesses.has(exactBusinessKey);
+      
+      if (!isExactDuplicate) {
+        seenExactBusinesses.add(exactBusinessKey);
+        uniqueBusinesses.push(business);
+        console.log(`-> Added unique business: "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      } else {
+        console.log(`-> Removed exact duplicate: "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      }
+    });
+    
+    console.log(`Deduplication complete: ${uniqueBusinesses.length} unique businesses from ${businesses.length} total`);
+    return uniqueBusinesses;
+  }
+
+  // Enhanced business validation and cleaning
+  cleanAndValidateBusiness(business) {
+    const cleaned = { ...business };
+    
+    // Clean name
+    if (cleaned.name) {
+      cleaned.name = cleaned.name.trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+        .replace(/^[^a-zA-Z0-9]*/, '') // Remove leading non-alphanumeric
+        .replace(/[^a-zA-Z0-9]*$/, '') // Remove trailing non-alphanumeric
+        .substring(0, 200); // Limit length
+      
+      // Additional cleaning for pagination elements
+      if (cleaned.name) {
+        // Remove common pagination patterns
+        cleaned.name = cleaned.name
+          .replace(/^(\d+,\s*)+\d+\s*more$/gi, '') // "33 More,8 More,12 More"
+          .replace(/^(\w+,\s*)+\d+\s*more$/gi, '') // "WhatsApp,33 More"
+          .replace(/^(whatsapp|instagram|facebook|twitter|youtube|linkedin),?\s*\d*\s*more?$/gi, '')
+          .replace(/^\d+\s*more$/gi, '') // "33 More"
+          .replace(/^(show|view|load)\s*more$/gi, '') // "Show More"
+          .replace(/^(next|previous)\s*page$/gi, '') // "Next Page"
+          .trim();
+        
+        // If name becomes empty after cleaning, set to null
+        if (cleaned.name.length === 0) {
+          cleaned.name = '';
+        }
+      }
+    }
+    
+    // Clean phone (already formatted in extraction, but double-check)
+    if (cleaned.phone) {
+      const phoneDigits = cleaned.phone.replace(/\D/g, '');
+      if (phoneDigits.length === 10 && /^[6-9]\d{9}$/.test(phoneDigits)) {
+        cleaned.phone = phoneDigits;
+      } else {
+        cleaned.phone = '';
+      }
+    }
+    
+    // Clean address
+    if (cleaned.address) {
+      cleaned.address = cleaned.address.trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        .substring(0, 500);
+    }
+    
+    // Clean category
+    if (cleaned.category) {
+      cleaned.category = cleaned.category.trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        .substring(0, 100);
+    }
+    
+    return cleaned;
+  }
+
+  // Relaxed deduplication for when we need more businesses
+  deduplicateBusinessesRelaxed(businesses) {
+    console.log(`Using relaxed deduplication for ${businesses.length} businesses...`);
+    const uniqueBusinesses = [];
+    const seenExactBusinesses = new Set(); // For exact duplicates only
+    
+    businesses.forEach((business, index) => {
+      const phoneKey = business.phone || '';
+      const nameKey = business.name ? business.name.toLowerCase().trim() : '';
+      const addressKey = business.address ? business.address.toLowerCase().trim() : '';
+      
+      // More relaxed validation - just need a name OR phone
+      const hasValidName = nameKey && nameKey.length > 2 && !nameKey.match(/^(call|contact|phone|mobile|address|unknown|n\/a)$/i);
+      const hasValidPhone = phoneKey && phoneKey.length === 10 && /^[6-9]\d{9}$/.test(phoneKey);
+      
+      // Additional validation to filter out pagination and navigation elements (relaxed version)
+      const isPaginationElement = nameKey && (
+        nameKey.includes('more') ||
+        nameKey.includes('whatsapp') ||
+        nameKey.includes('show') ||
+        nameKey.includes('view') ||
+        nameKey.includes('next') ||
+        nameKey.includes('previous') ||
+        nameKey.includes('page') ||
+        nameKey.includes('load') ||
+        nameKey.match(/^\d+\s*more$/i) ||
+        nameKey.match(/^\d+$/) ||
+        nameKey.match(/^(\d+,\s*)+\d+\s*more$/i) ||
+        nameKey.match(/^(whatsapp|instagram|facebook|twitter|youtube|linkedin)/i) ||
+        nameKey.match(/^(share|follow|connect|message|chat|call)$/i)
+      );
+      
+      const isValidBusiness = !isPaginationElement && (hasValidName || hasValidPhone);
+      
+      if (!isValidBusiness) {
+        return;
+      }
+      
+      // Create unique key for exact duplicate detection (same name + same phone + same address)
+      const exactBusinessKey = `${nameKey}|${phoneKey}|${addressKey}`;
+      
+      // Allow same business names with different phone numbers or addresses
+      // Only filter out exact duplicates (same name + same phone + same address)
+      const isExactDuplicate = seenExactBusinesses.has(exactBusinessKey);
+      
+      if (!isExactDuplicate) {
+        seenExactBusinesses.add(exactBusinessKey);
+        uniqueBusinesses.push(business);
+        console.log(`-> Added unique business (relaxed): "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      } else {
+        console.log(`-> Removed exact duplicate (relaxed): "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      }
+    });
+    
+    console.log(`Relaxed deduplication complete: ${uniqueBusinesses.length} unique businesses from ${businesses.length} total`);
+    return uniqueBusinesses;
+  }
+}
 
 // Multer configuration for file upload
 const storage = multer.diskStorage({
@@ -1641,6 +3712,1036 @@ app.get('/api/excel-scraper/test-scrape', async (req, res) => {
         console.error('Test scrape error:', error);
         res.status(500).json({ error: error.message });
     }
+});
+
+// Justdial Scraper API Routes
+
+// Get popular categories for Justdial
+app.get('/api/categories', (req, res) => {
+  const popularCategories = [
+    { 
+      name: 'Electricians', 
+      icon: 'zap',
+      description: 'Electrical services and repairs',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Plumbers', 
+      icon: 'wrench',
+      description: 'Plumbing services and repairs',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Restaurants', 
+      icon: 'utensils',
+      description: 'Food and dining services',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Doctors', 
+      icon: 'stethoscope',
+      description: 'Medical services and healthcare',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Chartered Accountants', 
+      icon: 'calculator',
+      description: 'Financial and accounting services',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Real Estate Agents', 
+      icon: 'home',
+      description: 'Property dealers and real estate',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Hotels', 
+      icon: 'bed',
+      description: 'Accommodation and hospitality',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Schools', 
+      icon: 'graduation-cap',
+      description: 'Education and learning centers',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Interior Designers', 
+      icon: 'palette',
+      description: 'Home and office interior design',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Packers and Movers', 
+      icon: 'truck',
+      description: 'Relocation and transportation',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Caterers', 
+      icon: 'coffee',
+      description: 'Food catering services',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    },
+    { 
+      name: 'Dentists', 
+      icon: 'tooth',
+      description: 'Dental care services',
+      cities: ['Delhi', 'Mumbai', 'Bangalore', 'Chennai', 'Kolkata']
+    }
+  ];
+  
+  res.json({
+    success: true,
+    categories: popularCategories
+  });
+});
+
+// Scrape Justdial URL
+app.post('/api/justdial-scrape', async (req, res) => {
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  // Validate Justdial URL
+  if (!url.includes('justdial.com')) {
+    return res.status(400).json({ error: 'Invalid Justdial URL' });
+  }
+  
+  try {
+    const scraper = new JustdialScraper();
+    let data = await scraper.scrapeBusinessData(url, detectedCategory);
+    
+    // Apply enhanced deduplication to regular scraping as well
+    console.log('Applying deduplication to regular scraping results...');
+    const bulkScraper = new BulkJustdialScraper(); // Use the enhanced deduplication methods
+    const cleanedData = data.map(b => bulkScraper.cleanAndValidateBusiness(b));
+    const uniqueData = bulkScraper.deduplicateBusinesses(cleanedData);
+    
+    console.log(`Regular scraping - After deduplication: ${uniqueData.length} unique businesses from ${data.length} total`);
+    
+    // Ensure minimum 100 businesses if possible to match Justdial's actual count
+    if (uniqueData.length < 100 && uniqueData.length < data.length) {
+      console.log('Regular scraping - Trying to include more businesses to reach minimum 100...');
+      const relaxedData = bulkScraper.deduplicateBusinessesRelaxed(data);
+      if (relaxedData.length > uniqueData.length) {
+        console.log(`Regular scraping - Using relaxed criteria: ${relaxedData.length} businesses`);
+        data = relaxedData;
+      } else {
+        data = uniqueData;
+      }
+    } else {
+      data = uniqueData;
+    }
+    
+    if (data.length < 100) {
+      console.log(`Warning: Only ${data.length} unique businesses found, which is less than the target 100+ from Justdial`);
+    }
+    
+    res.json({
+      success: true,
+      data: data,
+      count: data.length,
+      uniqueCount: data.length,
+      originalCount: data.length
+    });
+  } catch (error) {
+    console.error('Scraping error:', error);
+    res.status(500).json({ 
+      error: 'Failed to scrape data',
+      message: error.message 
+    });
+  }
+});
+
+// Bulk Scrape Justdial URL for 250-350 businesses
+app.post('/api/justdial-bulk-scrape', async (req, res) => {
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  // Validate Justdial URL
+  if (!url.includes('justdial.com')) {
+    return res.status(400).json({ error: 'Invalid Justdial URL' });
+  }
+  
+  // Set up Server-Sent Events for progress tracking
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+  
+  const progressCallback = (progress) => {
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  };
+  
+  try {
+    const bulkScraper = new BulkJustdialScraper();
+    bulkScraper.setProgressCallback(progressCallback);
+    
+    // Send initial progress
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'starting'
+    });
+    
+    const data = await bulkScraper.scrapeBulkBusinessData(url);
+    
+    // Send final progress
+    progressCallback({
+      current: data.length,
+      target: 250,
+      percentage: 100,
+      page: 0,
+      status: 'completed',
+      finalData: data
+    });
+    
+    // Close the connection
+    res.write(`data: ${JSON.stringify({ success: true, data: data, count: data.length, finished: true })}\n\n`);
+    res.end();
+    
+  } catch (error) {
+    console.error('Bulk scraping error:', error);
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'error',
+      error: error.message
+    });
+    
+    res.write(`data: ${JSON.stringify({ success: false, error: error.message, finished: true })}\n\n`);
+    res.end();
+  }
+});
+
+// Export Justdial data to Excel
+app.post('/api/export/excel', async (req, res) => {
+  const { data } = req.body;
+  
+  if (!data || !Array.isArray(data)) {
+    return res.status(400).json({ error: 'Data is required' });
+  }
+  
+  try {
+    // Ensure all businesses have all required fields, even if empty
+    const normalizedData = data.map(business => ({
+      'Business Name': business.name || '',
+      'Phone Number': business.phone || '',
+      'Address': business.address || '',
+      'Category': business.category || '',
+      'City': business.city || '',
+      'Rating': business.rating || '',
+      'Image URL': business.image || '',
+      'Website': business.website || ''
+    }));
+    
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(normalizedData);
+    xlsx.utils.book_append_sheet(wb, ws, 'Business Data');
+    
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=justdial-business-data.xlsx');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Excel export error:', error);
+    res.status(500).json({ error: 'Failed to export Excel file' });
+  }
+});
+
+// Export Justdial data to CSV
+app.post('/api/export/csv', async (req, res) => {
+  const { data } = req.body;
+  
+  if (!data || !Array.isArray(data)) {
+    return res.status(400).json({ error: 'Data is required' });
+  }
+  
+  try {
+    const headers = ['Business Name', 'Phone Number', 'Address', 'Category', 'City', 'Rating', 'Image URL', 'Website'];
+    const csvRows = [headers.join(',')];
+    
+    data.forEach(row => {
+      const values = [
+        `"${(row.name || '').replace(/"/g, '""')}"`,
+        `"${(row.phone || '').replace(/"/g, '""')}"`,
+        `"${(row.address || '').replace(/"/g, '""')}"`,
+        `"${(row.category || '').replace(/"/g, '""')}"`,
+        `"${(row.city || '').replace(/"/g, '""')}"`,
+        `"${(row.rating || '').replace(/"/g, '""')}"`,
+        `"${(row.image || '').replace(/"/g, '""')}"`,
+        `"${(row.website || '').replace(/"/g, '""')}"` 
+      ];
+      csvRows.push(values.join(','));
+    });
+    
+    const csvContent = csvRows.join('\n');
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=justdial-business-data.csv');
+    res.send(csvContent);
+  } catch (error) {
+    console.error('CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export CSV file' });
+  }
+});
+
+// Image proxy endpoint to handle CORS issues for Justdial images
+app.get('/api/proxy/image', async (req, res) => {
+  const { url } = req.query;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'Image URL is required' });
+  }
+  
+  // Handle N/A case
+  if (url === 'N/A' || url === 'n/a') {
+    return res.status(404).json({ error: 'No image available (N/A)' });
+  }
+  
+  // Validate URL format
+  try {
+    new URL(url);
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid URL format' });
+  }
+  
+  console.log(`Proxying Justdial image: ${url}`);
+  
+  try {
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.justdial.com/',
+        'Accept': 'image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Fetch-Dest': 'image',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'cross-site'
+      },
+      timeout: 15000,
+      maxRedirects: 5
+    });
+    
+    // Check if the response is actually an image
+    const contentType = response.headers['content-type'] || '';
+    if (!contentType.startsWith('image/')) {
+      console.log(`Not an image: ${contentType}`);
+      return res.status(400).json({ error: 'URL does not point to an image' });
+    }
+    
+    // Set appropriate headers
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Cache-Control', 'public, max-age=7200'); // Cache for 2 hours
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    
+    // Pipe the image data
+    response.data.pipe(res);
+    
+  } catch (error) {
+    console.error('Justdial image proxy error:', error.message);
+    
+    // Handle different error types
+    if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
+      res.status(404).json({ error: 'Image not found or server unreachable' });
+    } else if (error.code === 'ETIMEDOUT') {
+      res.status(408).json({ error: 'Request timeout' });
+    } else if (error.response) {
+      res.status(error.response.status).json({ 
+        error: `Server returned ${error.response.status}`,
+        message: error.response.statusText 
+      });
+    } else {
+      res.status(500).json({ 
+        error: 'Failed to fetch image',
+        message: error.message 
+      });
+    }
+  }
+});
+
+// Google Maps Scraper API Routes
+
+app.post('/api/detect-categories', async (req, res) => {
+  const { url } = req.body;
+  
+  if (!url || !url.includes('google.com/maps')) {
+    return res.status(400).json({ error: 'Invalid Google Maps URL' });
+  }
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: "new",
+      executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ]
+    }).catch(async () => {
+      // Fallback: try without executablePath
+      return await puppeteer.launch({
+        headless: "new",
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ]
+      });
+    });
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    await page.setViewport({ width: 1400, height: 900 });
+    
+    console.log('Loading page for category detection...');
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    
+    const categories = await detectCategories(page);
+    
+    await browser.close();
+    res.json({ success: true, categories, count: categories.length });
+  } catch (error) {
+    if (browser) await browser.close();
+    console.error('Category detection error:', error);
+    res.status(500).json({ error: 'Category detection failed: ' + error.message });
+  }
+});
+
+app.post('/api/google-maps-scrape', async (req, res) => {
+  const { url } = req.body;
+  
+  if (!url || !url.includes('google.com/maps')) {
+    return res.status(400).json({ error: 'Invalid Google Maps URL' });
+  }
+
+  let browser;
+  try {
+    browser = await puppeteer.launch({
+      headless: "new",
+      executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=IsolateOrigins,site-per-process'
+      ]
+    }).catch(async () => {
+      // Fallback: try without executablePath
+      return await puppeteer.launch({
+        headless: "new",
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-gpu',
+          '--disable-web-security',
+          '--disable-features=IsolateOrigins,site-per-process'
+        ]
+      });
+    });
+    
+    const page = await browser.newPage();
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+    
+    await page.setViewport({ width: 1400, height: 900 });
+    
+    console.log('Loading page...');
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 120000 });
+    
+    // Wait for results to load
+    await page.waitForSelector('[role="feed"]', { timeout: 30000 }).catch(() => {
+      console.log('Feed selector not found, continuing anyway...');
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 5000));
+    
+    const results = await scrapeAllData(page);
+
+    await browser.close();
+    res.json({ success: true, data: results, count: results.length });
+  } catch (error) {
+    if (browser) await browser.close();
+    console.error('Scraping error:', error);
+    res.status(500).json({ error: 'Scraping failed: ' + error.message });
+  }
+});
+
+async function scrapeAllData(page) {
+  const allResults = new Map();
+  const seenNames = new Set();
+  
+  console.log('Starting extraction...');
+  
+  // Wait for results container
+  await new Promise(resolve => setTimeout(resolve, 3000));
+  
+  let scrollAttempts = 0;
+  const maxAttempts = 50; // Enough for 300+ businesses
+  let lastCount = 0;
+  let stagnantCount = 0;
+  
+  while (scrollAttempts < maxAttempts && allResults.size < 300 && stagnantCount < 20) {
+    
+    // Extract current results
+    const extracted = await page.evaluate(() => {
+      const items = [];
+      
+      // Find all result cards - updated selectors for current Google Maps structure
+      let cards = [];
+      
+      // Try multiple modern selectors for Google Maps results
+      cards = document.querySelectorAll('[role="feed"] > div > div[jsaction]');
+      
+      if (cards.length === 0) {
+        cards = document.querySelectorAll('[data-result-index]');
+      }
+      
+      if (cards.length === 0) {
+        cards = document.querySelectorAll('.Nv2PKTHOPQKb');
+      }
+      
+      if (cards.length === 0) {
+        cards = document.querySelectorAll('.lXJj5c');
+      }
+      
+      if (cards.length === 0) {
+        cards = document.querySelectorAll('[role="article"]');
+      }
+      
+      if (cards.length === 0) {
+        cards = document.querySelectorAll('a[href*="/maps/place/"]');
+      }
+      
+      if (cards.length === 0) {
+        // Fallback 1: find all divs that contain business information
+        const allDivs = document.querySelectorAll('div');
+        cards = Array.from(allDivs).filter(div => {
+          const text = div.textContent || '';
+          return text.includes('★') && (text.includes('·') || text.includes('+'));
+        });
+      }
+      
+      if (cards.length === 0) {
+        // Fallback 2: Look for any element with business-like content
+        const allElements = document.querySelectorAll('*');
+        cards = Array.from(allElements).filter(el => {
+          const text = el.textContent || '';
+          const hasRating = text.includes('★') || text.includes('stars');
+          const hasBusinessInfo = text.includes('·') || text.includes('+') || text.match(/\d+\s*reviews?/i);
+          const hasName = text.length > 5 && text.length < 100;
+          return hasRating && hasBusinessInfo && hasName;
+        });
+      }
+      
+      if (cards.length === 0) {
+        // Fallback 3: Try to find business data by looking for specific patterns
+        const bodyText = document.body.textContent || '';
+        console.log('Page content sample:', bodyText.substring(0, 1000));
+        
+        // Look for business patterns in the entire page
+        const businessPattern = /([A-Za-z\s&'-]+)\s*★\s*[\d.]+\s*·\s*([^★·\n]+(?:\n[^★·\n]+)*)/g;
+        const matches = bodyText.match(businessPattern);
+        if (matches && matches.length > 0) {
+          console.log(`Found ${matches.length} business patterns in page text`);
+          cards = matches.map((match, index) => ({
+            outerHTML: `<div>Business ${index + 1}: ${match}</div>`,
+            textContent: match,
+            querySelector: () => null
+          }));
+        }
+      }
+      
+      console.log(`Found ${cards.length} result cards`);
+      
+      // Debug: Log the first few cards to understand structure
+      if (cards.length > 0) {
+        console.log('First card HTML structure:');
+        console.log(cards[0].outerHTML.substring(0, 500) + '...');
+      }
+      
+      cards.forEach((card, index) => {
+        try {
+          // Extract Name
+          let name = '';
+          const nameSelectors = [
+            '.qBF1Pd',
+            '.fontHeadlineSmall',
+            'a[href*="/maps/place/"]',
+            'h3',
+            '[aria-label*="star"]',
+            '.liveresults',
+            '.fontBodyMedium',
+            '.t39EBf',
+            '.hfpxzc',
+            '[data-attrid="title"]'
+          ];
+          
+          for (const selector of nameSelectors) {
+            const el = card.querySelector(selector);
+            if (el) {
+              let text = el.textContent?.trim();
+              if (text && text.length > 0 && text.length < 200) {
+                // Clean up name - remove rating and other suffixes
+                text = text.split('·')[0].split('★')[0].split('(')[0].trim();
+                if (text.length > 2) {
+                  name = text;
+                  break;
+                }
+              }
+            }
+          }
+          
+          if (!name || name.length < 2) return;
+          if (name.includes('Sponsored') || name.includes('Ad')) return;
+          
+          // Extract Address - IMPROVED with business type filtering
+          let address = '';
+          
+          // Common business types to exclude from address
+          const businessTypes = [
+            'chartered accountant', 'ca', 'accountant', 'lawyer', 'advocate', 'doctor', 'dr', 'physician',
+            'dentist', 'hospital', 'clinic', 'restaurant', 'hotel', 'school', 'college', 'university',
+            'bank', 'atm', 'pharmacy', 'medical store', 'grocery', 'supermarket', 'shop', 'store',
+            'salon', 'parlor', 'gym', 'fitness', 'station', 'agency', 'consultant', 'service',
+            'company', 'office', 'firm', 'center', 'centre', 'institute', 'academy'
+          ];
+          
+          // Function to check if text contains business types
+          function containsBusinessType(text) {
+            const lowerText = text.toLowerCase();
+            return businessTypes.some(type => lowerText.includes(type));
+          }
+          
+          // Function to check if text looks like a real address
+          function looksLikeAddress(text) {
+            // Must have at least one address indicator
+            const hasAddressIndicator = 
+              text.match(/\d/) || // Contains numbers
+              text.includes('Road') || 
+              text.includes('Street') || 
+              text.includes('Marg') ||
+              text.includes('Nagar') ||
+              text.includes('Colony') ||
+              text.includes('Area') ||
+              text.includes('District') ||
+              text.includes('City') ||
+              text.includes('Floor') ||
+              text.includes('Above') ||
+              text.includes('Near') ||
+              text.includes('Metro') ||
+              text.includes('Pillar') ||
+              text.includes('Village') ||
+              text.includes('Building') ||
+              text.includes('Tower') ||
+              /[A-Za-z]+\s+\d+/.test(text); // Letter + number pattern
+              
+            // Must not be primarily a business type
+            const notBusinessType = !containsBusinessType(text);
+            
+            return hasAddressIndicator && notBusinessType;
+          }
+          
+          // Try multiple address selectors
+          const addressSelectors = [
+            '.W4Efsd:not(:has(.W4Efsd))',
+            '.fontBodySmall',
+            '.W8CcMe',
+            '.RZC5L',
+            '[data-item-id="address"]',
+            '.QvFfWe',
+            '.UsdlK',
+            'div:not([class])'
+          ];
+          
+          for (const selector of addressSelectors) {
+            const elements = card.querySelectorAll(selector);
+            for (const el of elements) {
+              const text = el.textContent?.trim();
+              if (text && text.length > 10 && text.length < 300) {
+                if (looksLikeAddress(text)) {
+                  address = text;
+                  break;
+                }
+              }
+            }
+            if (address) break;
+          }
+          
+          // If no address found, try to get from full text with better filtering
+          if (!address) {
+            const allText = card.innerText;
+            const lines = allText.split('\n');
+            
+            // Look for address-like lines, excluding business types
+            for (let i = 1; i < Math.min(lines.length, 6); i++) {
+              const line = lines[i].trim();
+              if (line.length > 10 && line.length < 300 && looksLikeAddress(line)) {
+                address = line;
+                break;
+              }
+            }
+            
+            // If still no address, try combining multiple lines that look address-like
+            if (!address && lines.length > 2) {
+              let potentialAddress = '';
+              for (let i = 1; i < Math.min(lines.length, 5); i++) {
+                const line = lines[i].trim();
+                if (line.length > 5 && !containsBusinessType(line)) {
+                  potentialAddress += (potentialAddress ? ', ' : '') + line;
+                }
+              }
+              if (potentialAddress.length > 20 && looksLikeAddress(potentialAddress)) {
+                address = potentialAddress;
+              }
+            }
+          }
+          
+          // Extract Phone - IMPROVED
+          let phone = '';
+          const phoneSelectors = [
+            '.UsdlK',
+            '[data-item-id="phone"]',
+            '.lA4Bhb',
+            'span[aria-label*="phone"]',
+            'a[href^="tel:"]'
+          ];
+          
+          for (const selector of phoneSelectors) {
+            const el = card.querySelector(selector);
+            if (el) {
+              let text = el.textContent || el.getAttribute('aria-label') || '';
+              const phoneMatch = text.match(/[\+]?[(]?[0-9]{1,4}[)]?[-\s\.]?[(]?[0-9]{1,4}[)]?[-\s\.]?[0-9]{3,4}[-\s\.]?[0-9]{3,4}[\-]?[0-9]{0,4}/);
+              if (phoneMatch) {
+                phone = phoneMatch[0];
+                break;
+              }
+            }
+          }
+          
+          // Extract Website
+          let website = '';
+          const links = card.querySelectorAll('a[href]');
+          for (const link of links) {
+            const href = link.href;
+            if (href && 
+                (href.startsWith('http://') || href.startsWith('https://')) &&
+                !href.includes('google.com') &&
+                !href.includes('maps.google') &&
+                href.length < 200) {
+              website = href;
+              break;
+            }
+          }
+          
+          // Extract Rating
+          let rating = '';
+          const ratingEl = card.querySelector('.MW4etd') || 
+                          card.querySelector('[aria-label*="stars"]') ||
+                          card.querySelector('.fontBodyMedium');
+          if (ratingEl) {
+            const text = ratingEl.getAttribute('aria-label') || ratingEl.textContent || '';
+            const match = text.match(/(\d+\.?\d*)/);
+            if (match) rating = match[1];
+          }
+          
+          // Extract Category
+          let category = '';
+          const categorySelectors = [
+            '.fontBodySmall .qBF1Pd',
+            '.W4Efsd .qBF1Pd',
+            '.UsdlK .qBF1Pd',
+            '.lXJj5c .fontBodySmall',
+            '[data-item-id="category"]',
+            '.QvFfWe',
+            '.RZC5L'
+          ];
+          
+          for (const selector of categorySelectors) {
+            const el = card.querySelector(selector);
+            if (el) {
+              let text = el.textContent?.trim();
+              if (text && text.length > 0 && text.length < 100 && 
+                  !text.includes('★') && !text.match(/\d+/)) {
+                category = text;
+                break;
+              }
+            }
+          }
+          
+          // If no category found, try to infer from business name and context
+          if (!category) {
+            const allText = card.innerText;
+            const lines = allText.split('\n');
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.length > 3 && trimmed.length < 50 && 
+                  !trimmed.match(/\d+/) && 
+                  !trimmed.includes('★') && 
+                  !trimmed.includes('·') &&
+                  !trimmed.toLowerCase().includes('closed') &&
+                  !trimmed.toLowerCase().includes('open')) {
+                category = trimmed;
+                break;
+              }
+            }
+          }
+          
+          items.push({
+            name: name,
+            address: address || 'Address not found',
+            phone: phone || 'N/A',
+            website: website || 'N/A',
+            rating: rating || 'N/A',
+            category: category || 'Unknown'
+          });
+          
+        } catch(e) {
+          console.log(`Card ${index} error:`, e.message);
+        }
+      });
+      
+      return items;
+    });
+    
+    // Add new items to results
+    let newItems = 0;
+    extracted.forEach(item => {
+      const key = item.name.toLowerCase().trim();
+      if (!seenNames.has(key)) {
+        seenNames.add(key);
+        allResults.set(key, item);
+        newItems++;
+      }
+    });
+    
+    console.log(`Round ${scrollAttempts + 1}: Found ${extracted.length} items, ${newItems} new. Total: ${allResults.size}`);
+    
+    // Check if we're making progress
+    if (allResults.size === lastCount) {
+      stagnantCount++;
+      console.log(`No new items found. Stagnant count: ${stagnantCount}/20`);
+    } else {
+      stagnantCount = 0;
+      lastCount = allResults.size;
+    }
+    
+    if (allResults.size >= 300) {
+      console.log('Reached 300 businesses target!');
+      break;
+    }
+    
+    // Scroll to load more results
+    await page.evaluate(async () => {
+      // Find the scrollable container
+      const scrollableDiv = document.querySelector('[role="feed"]') || 
+                           document.querySelector('.m6QEHe') ||
+                           document.querySelector('.lXJj5c') ||
+                           document.querySelector('[role="main"]');
+      
+      if (scrollableDiv) {
+        // Scroll to bottom
+        scrollableDiv.scrollTop = scrollableDiv.scrollHeight;
+        
+        // Wait a bit
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Scroll again to trigger loading
+        scrollableDiv.scrollTop = scrollableDiv.scrollHeight;
+      } else {
+        window.scrollBy(0, window.innerHeight);
+      }
+    });
+    
+    // Wait for new content to load
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Try to click any "More results" button
+    await page.evaluate(() => {
+      const buttons = document.querySelectorAll('button, [role="button"]');
+      for (const btn of buttons) {
+        const text = btn.textContent?.toLowerCase() || '';
+        const aria = btn.getAttribute('aria-label')?.toLowerCase() || '';
+        if (text.includes('more') || aria.includes('more') || text.includes('load')) {
+          btn.click();
+          break;
+        }
+      }
+    });
+    
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    scrollAttempts++;
+  }
+  
+  console.log(`\n========== SCRAPING COMPLETE ==========`);
+  console.log(`Total businesses found: ${allResults.size}`);
+  console.log(`Total scroll attempts: ${scrollAttempts}`);
+  
+  // Log sample of extracted data
+  if (allResults.size > 0) {
+    console.log('\nSample of extracted data:');
+    const sample = Array.from(allResults.values()).slice(0, 3);
+    sample.forEach((item, idx) => {
+      console.log(`\n${idx + 1}. ${item.name}`);
+      console.log(`   Address: ${item.address}`);
+      console.log(`   Phone: ${item.phone}`);
+      console.log(`   Website: ${item.website}`);
+      console.log(`   Rating: ${item.rating}`);
+      console.log(`   Category: ${item.category}`);
+    });
+  }
+  
+  return Array.from(allResults.values());
+}
+
+async function detectCategories(page) {
+  console.log('Detecting categories...');
+  
+  const categories = await page.evaluate(() => {
+    const categorySet = new Set();
+    
+    // Find all result cards
+    let cards = document.querySelectorAll('[role="feed"] > div > div');
+    if (cards.length === 0) cards = document.querySelectorAll('.Nv2PK');
+    if (cards.length === 0) cards = document.querySelectorAll('[data-result-index]');
+    if (cards.length === 0) cards = document.querySelectorAll('.lXJj5c');
+    
+    cards.forEach(card => {
+      try {
+        // Try multiple category selectors
+        const categorySelectors = [
+          '.fontBodySmall .qBF1Pd',
+          '.W4Efsd .qBF1Pd',
+          '.UsdlK .qBF1Pd',
+          '.lXJj5c .fontBodySmall',
+          '[data-item-id="category"]',
+          '.QvFfWe',
+          '.RZC5L'
+        ];
+        
+        for (const selector of categorySelectors) {
+          const el = card.querySelector(selector);
+          if (el) {
+            let text = el.textContent?.trim();
+            if (text && text.length > 0 && text.length < 100 && 
+                !text.includes('★') && !text.match(/\d+/)) {
+              categorySet.add(text);
+              break;
+            }
+          }
+        }
+        
+        // If no category found, try to infer from business context
+        if (!categorySet.size) {
+          const allText = card.innerText;
+          const lines = allText.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.length > 3 && trimmed.length < 50 && 
+                !trimmed.match(/\d+/) && 
+                !trimmed.includes('★') && 
+                !trimmed.includes('·') &&
+                !trimmed.toLowerCase().includes('closed') &&
+                !trimmed.toLowerCase().includes('open')) {
+              categorySet.add(trimmed);
+              break;
+            }
+          }
+        }
+      } catch(e) {
+        console.log('Category detection error:', e.message);
+      }
+    });
+    
+    return Array.from(categorySet).filter(cat => cat && cat.length > 0);
+  });
+  
+  console.log(`Found ${categories.length} unique categories`);
+  return categories;
+}
+
+app.post('/api/download', async (req, res) => {
+  const { data, filename = 'google-maps-data.xlsx' } = req.body;
+  
+  if (!data || !Array.isArray(data)) {
+    return res.status(400).json({ error: 'Invalid data format' });
+  }
+
+  // Convert data to worksheet format
+  const wsData = data.map(item => ({
+    'Name': item.name || '',
+    'Address': item.address || '',
+    'Phone': item.phone || '',
+    'Website': item.website || ''
+  }));
+
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.json_to_sheet(wsData);
+  xlsx.utils.book_append_sheet(wb, ws, 'Businesses');
+  
+  const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
+});
+
+// Google Maps Download Endpoint
+app.post('/api/google-maps-download', async (req, res) => {
+  const { data, filename = 'google-maps-data.xlsx' } = req.body;
+  
+  if (!data || !Array.isArray(data)) {
+    return res.status(400).json({ error: 'Invalid data format' });
+  }
+
+  // Convert data to worksheet format
+  const wsData = data.map(item => ({
+    'Name': item.name || '',
+    'Address': item.address || '',
+    'Phone': item.phone || '',
+    'Website': item.website || ''
+  }));
+
+  const wb = xlsx.utils.book_new();
+  const ws = xlsx.utils.json_to_sheet(wsData);
+  xlsx.utils.book_append_sheet(wb, ws, 'Businesses');
+  
+  const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.send(buffer);
 });
 
 // Periodic cleanup function for old upload files

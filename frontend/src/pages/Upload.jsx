@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, AlertCircle, Loader2, Globe, Upload as UploadIcon, FileSpreadsheet, History, X, Calendar, Clock, File, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, AlertCircle, Loader2, Globe, Upload as UploadIcon, FileSpreadsheet, History, X, Calendar, Clock, File, ChevronLeft, ChevronRight, Search, Database } from 'lucide-react';
+import toast, { Toaster } from 'react-hot-toast';
 
 const Upload = () => {
   const [loading, setLoading] = useState(false);
@@ -27,7 +28,7 @@ const Upload = () => {
   const fetchUploadHistory = async () => {
     setHistoryLoading(true);
     try {
-      const response = await axios.get('http://localhost:5000/api/excel-scraper/history');
+      const response = await axios.get('http://localhost:5000/api/upload/history');
       setUploadHistory(response.data || []);
     } catch (error) {
       console.error('Failed to fetch upload history:', error);
@@ -49,7 +50,7 @@ const Upload = () => {
     const searchLower = historySearchTerm.toLowerCase();
     return (
       (item.originalFilename && item.originalFilename.toLowerCase().includes(searchLower)) ||
-      (item.processedFilename && item.processedFilename.toLowerCase().includes(searchLower)) ||
+      (item.filename && item.filename.toLowerCase().includes(searchLower)) ||
       (item.status && item.status.toLowerCase().includes(searchLower))
     );
   });
@@ -687,6 +688,7 @@ const Upload = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 py-8">
+      <Toaster position="top-right" />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header Section */}
         <div className="bg-white rounded-2xl shadow-xl p-8 mb-8 border border-gray-100">
@@ -923,7 +925,7 @@ const Upload = () => {
                             <div className="flex items-center space-x-2 mb-2">
                               <FileSpreadsheet className="w-5 h-5 text-green-600" />
                               <h4 className="font-semibold text-gray-800">
-                                {item.originalFilename || item.processedFilename || 'Unknown File'}
+                                {item.originalFilename || 'Unknown File'}
                               </h4>
                               {item.status && (
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -940,7 +942,7 @@ const Upload = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-gray-600">
                               <div className="flex items-center space-x-2">
                                 <Calendar className="w-4 h-4" />
-                                <span>Uploaded: {formatDate(item.uploadedAt || item.processedAt)}</span>
+                                <span>Uploaded: {formatDate(item.uploadDate)}</span>
                               </div>
                               {item.size && (
                                 <div className="flex items-center space-x-2">
@@ -948,16 +950,22 @@ const Upload = () => {
                                   <span>Size: {formatFileSize(item.size)}</span>
                                 </div>
                               )}
-                              {item.recordCount && (
+                              {item.recordCount !== undefined && (
                                 <div className="flex items-center space-x-2">
                                   <Database className="w-4 h-4" />
                                   <span>Records: {item.recordCount}</span>
                                 </div>
                               )}
-                              {item.processedFilename && item.processedFilename !== item.originalFilename && (
+                              {item.mimetype && (
                                 <div className="flex items-center space-x-2">
-                                  <RefreshCw className="w-4 h-4" />
-                                  <span>Processed: {item.processedFilename}</span>
+                                  <FileText className="w-4 h-4" />
+                                  <span>Type: {item.mimetype}</span>
+                                </div>
+                              )}
+                              {item.errorMessage && (
+                                <div className="flex items-center space-x-2 text-red-600 col-span-full">
+                                  <AlertCircle className="w-4 h-4" />
+                                  <span>Error: {item.errorMessage}</span>
                                 </div>
                               )}
                             </div>
