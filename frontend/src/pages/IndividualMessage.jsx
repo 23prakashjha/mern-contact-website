@@ -103,19 +103,26 @@ const IndividualMessage = () => {
     'Surpur', 'Talikota', 'Yadrami', 'Yelburga', 'Yergol', 'Zalki'
   ];
 
-  // Business categories (same as in History and MessageSender)
-  const businessCategories = [
-    'IT Services', 'Manufacturing', 'Healthcare', 'Education', 'Retail', 'Banking & Finance',
-    'Real Estate', 'Construction', 'Transportation', 'Hospitality', 'Agriculture', 'Textile',
-    'Pharmaceuticals', 'Telecommunications', 'Media & Entertainment', 'Consulting',
-    'Logistics & Supply Chain', 'Energy & Utilities', 'Automotive', 'Food & Beverage',
-    'Chemicals', 'Electronics', 'Fashion & Apparel', 'Sports & Recreation', 'Travel & Tourism',
-    'Legal Services', 'Insurance', 'Government', 'Non-Profit', 'Startups', 'E-commerce',
-    'Digital Marketing', 'Research & Development', 'Engineering', 'Architecture',
-    'Design & Creative', 'HR & Recruitment', 'Training & Development', 'Security Services',
-    'Waste Management', 'Environmental Services', 'Biotechnology', 'Aerospace',
-    'Marine & Shipping', 'Mining', 'Forestry', 'Utilities', 'Other'
-  ];
+  
+  // Extract unique categories from companies data
+  const getUniqueCategories = () => {
+    const categories = new Set();
+    companies.forEach(company => {
+      if (company.detectedCategory && company.detectedCategory.category) {
+        categories.add(company.detectedCategory.category);
+      }
+      if (company.category) {
+        categories.add(company.category);
+      }
+      if (company.businessCategory) {
+        categories.add(company.businessCategory);
+      }
+      if (company.industry) {
+        categories.add(company.industry);
+      }
+    });
+    return Array.from(categories).sort();
+  };
 
   // Fetch companies from backend
   useEffect(() => {
@@ -661,7 +668,7 @@ const IndividualMessage = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
                   >
                     <option value="all">All Categories</option>
-                    {businessCategories.map((category) => (
+                    {getUniqueCategories().map((category) => (
                       <option key={category} value={category}>
                         {category}
                       </option>
@@ -764,6 +771,7 @@ const IndividualMessage = () => {
                       <tr>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S.No</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Website</th>
@@ -784,6 +792,32 @@ const IndividualMessage = () => {
                           <td className="px-3 py-2 text-sm font-medium text-gray-900" title={truncateCompanyName(normalizeCompanyName(company.company))}>
                             {truncateCompanyName(normalizeCompanyName(company.company))}
                           </td>
+                          <td className="px-3 py-2 text-sm">
+                            {company.detectedCategory && company.detectedCategory.category ? (
+                              <div className="flex flex-col">
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                  {company.detectedCategory.category}
+                                </span>
+                                <span className="text-xs text-gray-500 mt-1">
+                                  {company.detectedCategory.confidence}% confidence
+                                </span>
+                              </div>
+                            ) : company.category ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {company.category}
+                              </span>
+                            ) : company.businessCategory ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {company.businessCategory}
+                              </span>
+                            ) : company.industry ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                {company.industry}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">No Category</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-sm text-gray-600">{company.phone ? company.phone.split(',')[0].trim() : '-'}</td>
                           <td className="px-3 py-2 text-sm">
                             {company.email && company.email.trim() !== '' ? (
@@ -793,7 +827,7 @@ const IndividualMessage = () => {
                                   if (!trimmedEmail) return null;
                                   return (
                                     <span key={`${company._id}-${emailIndex}`} className="text-green-600 block">
-                                      {trimmedEmail} {isValidEmail(trimmedEmail) ? '✅' : '❌'}
+                                      {trimmedEmail}
                                     </span>
                                   );
                                 })}
@@ -804,7 +838,14 @@ const IndividualMessage = () => {
                           </td>
                           <td className="px-3 py-2 text-sm">
                             {company.website && company.website.trim() !== '' ? (
-                              <span className="text-blue-600">{company.website}</span>
+                              <a
+                                href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+                              >
+                                {company.website}
+                              </a>
                             ) : (
                               <span className="text-gray-600">No Website</span>
                             )}
@@ -858,7 +899,7 @@ const IndividualMessage = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
                   >
                     <option value="all">All Categories</option>
-                    {businessCategories.map((category) => (
+                    {getUniqueCategories().map((category) => (
                       <option key={category} value={category}>
                         {category}
                       </option>
@@ -973,6 +1014,7 @@ const IndividualMessage = () => {
                         </th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S.No</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+                        <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
                         <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Website</th>
@@ -995,6 +1037,32 @@ const IndividualMessage = () => {
                           <td className="px-3 py-2 text-sm font-medium text-gray-900" title={truncateCompanyName(normalizeCompanyName(company.company))}>
                             {truncateCompanyName(normalizeCompanyName(company.company))}
                           </td>
+                          <td className="px-3 py-2 text-sm">
+                            {company.detectedCategory && company.detectedCategory.category ? (
+                              <div className="flex flex-col">
+                                <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                  {company.detectedCategory.category}
+                                </span>
+                                <span className="text-xs text-gray-500 mt-1">
+                                  {company.detectedCategory.confidence}% confidence
+                                </span>
+                              </div>
+                            ) : company.category ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {company.category}
+                              </span>
+                            ) : company.businessCategory ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                {company.businessCategory}
+                              </span>
+                            ) : company.industry ? (
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                {company.industry}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">No Category</span>
+                            )}
+                          </td>
                           <td className="px-3 py-2 text-sm text-gray-600">{company.phone ? company.phone.split(',')[0].trim() : '-'}</td>
                           <td className="px-3 py-2 text-sm">
                             {company.email && company.email.trim() !== '' ? (
@@ -1004,7 +1072,7 @@ const IndividualMessage = () => {
                                   if (!trimmedEmail) return null;
                                   return (
                                     <span key={`${company._id}-${emailIndex}`} className="text-green-600 block">
-                                      {trimmedEmail} {isValidEmail(trimmedEmail) ? '✅' : '❌'}
+                                      {trimmedEmail}
                                     </span>
                                   );
                                 })}
@@ -1015,7 +1083,14 @@ const IndividualMessage = () => {
                           </td>
                           <td className="px-3 py-2 text-sm">
                             {company.website && company.website.trim() !== '' ? (
-                              <span className="text-blue-600">{company.website}</span>
+                              <a
+                                href={company.website.startsWith('http') ? company.website : `https://${company.website}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 hover:underline break-all"
+                              >
+                                {company.website}
+                              </a>
                             ) : (
                               <span className="text-gray-600">No Website</span>
                             )}

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight } from 'lucide-react';
+import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
 
 const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter = 'all' }) => {
   const [expandedCompanies, setExpandedCompanies] = useState(new Set());
+  const [expandedUrls, setExpandedUrls] = useState(new Set());
   // Helper function to truncate company names
   const truncateCompanyName = (name, maxChars = 20) => {
     if (!name) return '';
@@ -19,6 +20,19 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
   // Toggle company name expansion
   const toggleCompanyExpansion = (companyId) => {
     setExpandedCompanies(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(companyId)) {
+        newSet.delete(companyId);
+      } else {
+        newSet.add(companyId);
+      }
+      return newSet;
+    });
+  };
+
+  // Toggle URL expansion
+  const toggleUrlExpansion = (companyId) => {
+    setExpandedUrls(prev => {
       const newSet = new Set(prev);
       if (newSet.has(companyId)) {
         newSet.delete(companyId);
@@ -213,6 +227,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
           <tr>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S.No</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -248,6 +263,34 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                 </div>
               </td>
               <td className="px-4 py-3 text-sm">
+                {company.detectedCategory && company.detectedCategory.category ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                    <Tag className="w-3 h-3 mr-1" />
+                    {company.detectedCategory.category}
+                  </span>
+                ) : company.category ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <Tag className="w-3 h-3 mr-1" />
+                    {company.category}
+                  </span>
+                ) : company.businessCategory ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                    <Tag className="w-3 h-3 mr-1" />
+                    {company.businessCategory}
+                  </span>
+                ) : company.industry ? (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                    <Tag className="w-3 h-3 mr-1" />
+                    {company.industry}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">
+                    <Tag className="w-3 h-3 mr-1" />
+                    No Category
+                  </span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-sm">
                 <div className="space-y-1">
                   {company.phone && company.phone.trim() !== '' ? (
                     <div className="flex items-center gap-1">
@@ -278,14 +321,34 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                   {company.website && company.website.trim() !== '' ? (
                     <div className="flex items-start gap-1">
                       <Globe className="w-3.5 h-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
-                      <a
-                        href={company.website.split(',')[0].trim().startsWith('http') ? company.website.split(',')[0].trim() : `https://${company.website.split(',')[0].trim()}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-purple-600 hover:text-purple-800 hover:underline break-all max-w-xs"
-                      >
-                        {company.website.split(',')[0].trim()}
-                      </a>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-1">
+                          <a
+                            href={company.website.split(',')[0].trim().startsWith('http') ? company.website.split(',')[0].trim() : `https://${company.website.split(',')[0].trim()}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-purple-600 hover:text-purple-800 hover:underline break-all"
+                          >
+                            {expandedUrls.has(company._id) 
+                              ? company.website.split(',')[0].trim()
+                              : company.website.split(',')[0].trim().substring(0, 30) + (company.website.split(',')[0].trim().length > 30 ? '...' : '')
+                            }
+                          </a>
+                          {company.website.split(',')[0].trim().length > 30 && (
+                            <button
+                              onClick={() => toggleUrlExpansion(company._id)}
+                              className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded transition-all duration-200 flex-shrink-0"
+                              title={expandedUrls.has(company._id) ? "Show less" : "Show full URL"}
+                            >
+                              {expandedUrls.has(company._id) ? (
+                                <EyeOff className="w-3 h-3" />
+                              ) : (
+                                <Eye className="w-3 h-3" />
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1">

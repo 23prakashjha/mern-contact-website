@@ -48,14 +48,25 @@ const History = () => {
     'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur'
   ];
 
-  // Business categories (truncated for brevity)
-  const businessCategories = [
-    'IT Services', 'Manufacturing', 'Healthcare', 'Education', 'Retail', 'Banking & Finance',
-    'Real Estate', 'Construction', 'Transportation', 'Hospitality', 'Agriculture', 'Textile',
-    'Pharmaceuticals', 'Telecommunications', 'Media & Entertainment', 'Consulting',
-    'Logistics & Supply Chain', 'Energy & Utilities', 'Automotive', 'Food & Beverage',
-    'Chemicals', 'Electronics', 'Fashion & Apparel', 'Sports & Recreation', 'Travel & Tourism'
-  ];
+  // Extract unique categories from companies data
+  const getUniqueCategories = () => {
+    const categories = new Set();
+    companies.forEach(company => {
+      if (company.detectedCategory && company.detectedCategory.category) {
+        categories.add(company.detectedCategory.category);
+      }
+      if (company.category) {
+        categories.add(company.category);
+      }
+      if (company.businessCategory) {
+        categories.add(company.businessCategory);
+      }
+      if (company.industry) {
+        categories.add(company.industry);
+      }
+    });
+    return Array.from(categories).sort();
+  };
 
   useEffect(() => {
     fetchCompanies();
@@ -496,7 +507,7 @@ const History = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
                     >
                       <option value="all">All Categories</option>
-                      {businessCategories.map((category) => (
+                      {getUniqueCategories().map((category) => (
                         <option key={category} value={category}>
                           {category}
                         </option>

@@ -726,6 +726,40 @@ function ExcelScraper() {
                 </div>
               </div>
 
+              {/* Category Analysis Section */}
+              {processedData && processedData['Category Summary'] && (
+                <div className="mb-6">
+                  <h4 className="text-lg font-semibold mb-3 flex items-center space-x-2">
+                    <Globe className="w-5 h-5 text-purple-600" />
+                    <span>Category Analysis</span>
+                  </h4>
+                  <div className="bg-purple-50 p-4 rounded-lg">
+                    <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {processedData['Category Summary'].slice(0, 6).map((category, index) => (
+                        <div key={index} className="bg-white p-3 rounded-lg border border-purple-200">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-purple-900 text-sm">{category.Category}</span>
+                            <span className="text-purple-600 font-bold">{category.Count}</span>
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <div>Percentage: {category.Percentage}</div>
+                            <div>With Email: {category['With Email']}</div>
+                            <div>With Phone: {category['With Phone']}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {processedData['Category Summary'].length > 6 && (
+                      <div className="mt-3 text-center">
+                        <span className="text-sm text-purple-700">
+                          +{processedData['Category Summary'].length - 6} more categories
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Phone Number Analysis Section */}
               <div className="grid md:grid-cols-2 gap-4 mb-6">
                 <div className="bg-purple-50 p-4 rounded-lg">
@@ -775,6 +809,76 @@ function ExcelScraper() {
                 <Download className="w-5 h-5" />
                 <span>Download Processed File</span>
               </button>
+
+              {/* Processed Data Preview with Categories */}
+              {processedData && processedData['All Processed Data'] && (
+                <div className="mt-6">
+                  <h4 className="text-lg font-semibold mb-3">Processed Data Preview (with Categories)</h4>
+                  <div className="bg-gray-50 p-4 rounded-lg overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-200">
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Company</th>
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Category</th>
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Email</th>
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Phone</th>
+                          <th className="text-left py-2 px-3 font-medium text-gray-700">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {processedData['All Processed Data'].slice(0, 10).map((row, index) => (
+                          <tr key={index} className="border-b border-gray-100 hover:bg-gray-100">
+                            <td className="py-2 px-3">
+                              {(() => {
+                                const companyKey = Object.keys(row).find(k => 
+                                  k.toLowerCase().includes('company') || k.toLowerCase().includes('name')
+                                );
+                                const companyName = companyKey ? row[companyKey] : 'N/A';
+                                return (
+                                  <div className="max-w-xs truncate" title={companyName}>
+                                    {companyName}
+                                  </div>
+                                );
+                              })()}
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                {row.category || 'Uncategorized'}
+                              </span>
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="max-w-xs truncate text-blue-600" title={row.email || 'N/A'}>
+                                {row.email || 'N/A'}
+                              </div>
+                            </td>
+                            <td className="py-2 px-3">
+                              <div className="max-w-xs truncate text-green-600" title={row.phone || 'N/A'}>
+                                {row.phone || 'N/A'}
+                              </div>
+                            </td>
+                            <td className="py-2 px-3">
+                              <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                                row.scrapeStatus?.includes('Success') 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : row.scrapeStatus?.includes('Error')
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {row.scrapeStatus || 'Unknown'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    {processedData['All Processed Data'].length > 10 && (
+                      <div className="mt-3 text-center text-sm text-gray-600">
+                        Showing 10 of {processedData['All Processed Data'].length} companies. Download the complete file to see all data.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
         )}

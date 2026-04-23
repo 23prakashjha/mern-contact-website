@@ -371,6 +371,120 @@ function cleanCategoryName(category) {
     .trim();
 }
 
+// Company categorization function based on company name analysis
+const categorizeCompany = (companyName) => {
+  if (!companyName || typeof companyName !== 'string') {
+    return 'Uncategorized';
+  }
+
+  const name = companyName.toLowerCase().trim();
+  
+  // Define category patterns with keywords
+  const categories = {
+    'Chartered Accounts': [
+      'chartered accountant', 'ca', 'accountant', 'accountancy', 'accounting',
+      'audit', 'auditor', 'tax consultant', 'taxation', 'financial advisor',
+      'cfo', 'chief financial', 'bookkeeping', 'book keeper', 'finance'
+    ],
+    'Dental': [
+      'dental', 'dentist', 'dental clinic', 'dental care', 'dental hospital',
+      'orthodontist', 'periodontist', 'endodontist', 'pediatric dentist',
+      'dental surgeon', 'dental lab', 'smile', 'teeth', 'tooth'
+    ],
+    'Medical/Healthcare': [
+      'hospital', 'medical', 'clinic', 'healthcare', 'doctor', 'physician',
+      'surgeon', 'pharmacy', 'pharmaceutical', 'medicine', 'medical center',
+      'health', 'nursing', 'surgical', 'diagnostic', 'pathology', 'x-ray'
+    ],
+    'Legal': [
+      'lawyer', 'attorney', 'legal', 'law firm', 'advocate', 'counsel',
+      'solicitor', 'barrister', 'legal services', 'juris', 'court'
+    ],
+    'Education': [
+      'school', 'college', 'university', 'institute', 'academy', 'education',
+      'training', 'tutorial', 'coaching', 'learning', 'educational',
+      'student', 'teacher', 'professor'
+    ],
+    'IT/Software': [
+      'software', 'it', 'information technology', 'tech', 'technology',
+      'computer', 'programming', 'development', 'developer', 'coding',
+      'app', 'application', 'web development', 'solutions', 'digital'
+    ],
+    'Real Estate': [
+      'real estate', 'property', 'builder', 'construction', 'developer',
+      'infrastructure', 'building', 'architect', 'interior', 'housing',
+      'land', 'estate agent', 'realtor'
+    ],
+    'Hospitality': [
+      'hotel', 'restaurant', 'food', 'cafe', 'catering', 'hospitality',
+      'dining', 'bar', 'pub', 'lounge', 'motel', 'resort', 'bakery'
+    ],
+    'Manufacturing': [
+      'manufacturing', 'factory', 'industry', 'production', 'machinery',
+      'equipment', 'industrial', 'fabrication', 'assembly', 'plant'
+    ],
+    'Retail': [
+      'shop', 'store', 'retail', 'supermarket', 'mall', 'shopping',
+      'grocery', 'market', 'boutique', 'outlet', 'dealer'
+    ],
+    'Automotive': [
+      'car', 'auto', 'automobile', 'vehicle', 'motor', 'garage', 'workshop',
+      'service center', 'showroom', 'dealership', 'parts', 'repair'
+    ],
+    'Consulting': [
+      'consultant', 'consulting', 'advisory', 'consultancy', 'advisor',
+      'business consultant', 'management consultant'
+    ],
+    'Marketing': [
+      'marketing', 'advertising', 'promotion', 'brand', 'creative agency',
+      'digital marketing', 'seo', 'social media', 'media'
+    ],
+    'Financial Services': [
+      'bank', 'banking', 'finance', 'investment', 'insurance', 'loan',
+      'credit', 'financial services', 'wealth management', 'broker'
+    ],
+    'Logistics': [
+      'logistics', 'transport', 'shipping', 'delivery', 'courier',
+      'freight', 'warehouse', 'distribution', 'supply chain'
+    ],
+    'Beauty/Wellness': [
+      'beauty', 'salon', 'spa', 'wellness', 'cosmetic', 'grooming',
+      'hair', 'beauty parlor', 'massage', 'fitness', 'gym'
+    ],
+    'Entertainment': [
+      'entertainment', 'media', 'cinema', 'movie', 'theater', 'music',
+      'gaming', 'event', 'party', 'fun'
+    ]
+  };
+
+  // Check each category for matching keywords
+  for (const [category, keywords] of Object.entries(categories)) {
+    for (const keyword of keywords) {
+      if (name.includes(keyword)) {
+        return category;
+      }
+    }
+  }
+
+  // Special pattern matching for specific cases
+  if (name.match(/pvt\.?\.?\s*ltd\.?\.?|limited|ltd\.?\.?|private\s+limited/i)) {
+    // Check if it's a professional services company
+    if (name.match(/consult|advisor|service|solution/i)) {
+      return 'Consulting';
+    }
+  }
+
+  if (name.match(/dr\.?\.?|doctor|md|m\.?s\.?|b\.?d\.?s\.?|medical/i)) {
+    return 'Medical/Healthcare';
+  }
+
+  if (name.match(/eng\.?\.?|engineer|engineering|tech/i)) {
+    return 'IT/Software';
+  }
+
+  return 'Business/Other';
+};
+
 // Enhanced Website Scraper with Multi-Page Navigation and Bottom Scrolling
 class EnhancedWebsiteScraper {
     constructor() {
@@ -986,11 +1100,22 @@ const processExcelFile = async (filePath) => {
             key.toLowerCase().includes('rllt_detail1')
         );
 
+        const companyColumn = Object.keys(data[0]).find(key => 
+            key.toLowerCase().includes('company') || 
+            key.toLowerCase().includes('name') || 
+            key.toLowerCase().includes('business') ||
+            key.toLowerCase().includes('firm') ||
+            key.toLowerCase().includes('organization') ||
+            key.toLowerCase().includes('title') ||
+            key.toLowerCase().includes('institution')
+        ) || Object.keys(data[0])[0]; // Fallback to first column
+
         console.log(`Processing ${data.length} rows`);
         console.log(`URL column: ${urlColumn || 'Not found'}`);
         console.log(`Phone column: ${phoneColumn || 'Not found'}`);
         console.log(`Email column: ${emailColumn || 'Not found'}`);
         console.log(`Address column: ${addressColumn || 'Not found'}`);
+        console.log(`Company column: ${companyColumn || 'Not found'}`);
 
         const batchSize = 5;
         const results = [];
@@ -1002,6 +1127,8 @@ const processExcelFile = async (filePath) => {
                 const existingPhone = phoneColumn ? String(row[phoneColumn] || '') : '';
                 const existingEmail = emailColumn ? String(row[emailColumn] || '') : '';
                 const existingAddress = addressColumn ? extractAddress(String(row[addressColumn] || '')) : '';
+                const companyName = companyColumn ? String(row[companyColumn] || '') : '';
+                const category = categorizeCompany(companyName);
                 
                 let extractedUrl = url;
                 if (typeof url === 'string' && url) {
@@ -1034,6 +1161,7 @@ const processExcelFile = async (filePath) => {
                         email: cleanedEmail,
                         phone: cleanedPhone,
                         address: existingAddress.trim(),
+                        category: category,
                         scrapeStatus: cleanedPhone || cleanedEmail ? 'Used existing data' : 'No URL found'
                     };
                 }
@@ -1083,6 +1211,7 @@ const processExcelFile = async (filePath) => {
                     email: finalEmail,
                     phone: finalPhone,
                     address: existingAddress.trim(),
+                    category: category,
                     scrapeStatus: scrapeStatus
                 };
             });
@@ -4063,6 +4192,42 @@ app.post('/api/excel-scraper/upload', upload.single('excelFile'), async (req, re
             const needPhonesWorksheet = xlsx.utils.json_to_sheet(companiesWithoutExistingPhonesData);
             xlsx.utils.book_append_sheet(newWorkbook, needPhonesWorksheet, 'Need Phone Numbers');
         }
+
+        // Category-based analysis sheets
+        const categories = {};
+        processedData.forEach(row => {
+            const category = row.category || 'Uncategorized';
+            if (!categories[category]) {
+                categories[category] = [];
+            }
+            categories[category].push(row);
+        });
+
+        // Create separate sheets for each category
+        Object.keys(categories).sort().forEach(category => {
+            if (categories[category].length > 0) {
+                const categoryWorksheet = xlsx.utils.json_to_sheet(categories[category]);
+                // Sanitize sheet name by removing invalid characters
+                let sheetName = category.replace(/[\/\\?*[\]:]/g, '-');
+                sheetName = sheetName.length > 25 ? sheetName.substring(0, 22) + '...' : sheetName;
+                xlsx.utils.book_append_sheet(newWorkbook, categoryWorksheet, sheetName);
+            }
+        });
+
+        // Create category summary sheet
+        const categorySummary = Object.keys(categories).sort().map(category => ({
+            'Category': category,
+            'Count': categories[category].length,
+            'Percentage': ((categories[category].length / processedData.length) * 100).toFixed(2) + '%',
+            'With Email': categories[category].filter(row => row.email && row.email.trim()).length,
+            'With Phone': categories[category].filter(row => row.phone && row.phone.trim()).length,
+            'With Both': categories[category].filter(row => 
+                row.email && row.email.trim() && row.phone && row.phone.trim()
+            ).length
+        }));
+
+        const summaryWorksheet = xlsx.utils.json_to_sheet(categorySummary);
+        xlsx.utils.book_append_sheet(newWorkbook, summaryWorksheet, 'Category Summary');
         
         const processedFilename = `processed-${Date.now()}.xlsx`;
         const processedFilePath = path.join(__dirname, 'uploads', processedFilename);

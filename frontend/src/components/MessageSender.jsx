@@ -5,7 +5,25 @@ const MessageSender = ({ onSendMessage, loading, companies = [] }) => {
   const [communicationType, setCommunicationType] = useState('all_channels');
   const [selectedCategory, setSelectedCategory] = useState('all');
 
-  // Business categories (same as in History page)
+  // Extract unique categories from companies data
+  const getUniqueCategories = () => {
+    const categories = new Set();
+    companies.forEach(company => {
+      if (company.detectedCategory && company.detectedCategory.category) {
+        categories.add(company.detectedCategory.category);
+      }
+      if (company.category) {
+        categories.add(company.category);
+      }
+      if (company.businessCategory) {
+        categories.add(company.businessCategory);
+      }
+      if (company.industry) {
+        categories.add(company.industry);
+      }
+    });
+    return Array.from(categories).sort();
+  };
  
 
   const handleCompanyToggle = (companyId) => {
@@ -68,7 +86,7 @@ const MessageSender = ({ onSendMessage, loading, companies = [] }) => {
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="all">All Categories</option>
-          {businessCategories.map(category => (
+          {getUniqueCategories().map(category => (
             <option key={category} value={category}>{category}</option>
           ))}
         </select>
