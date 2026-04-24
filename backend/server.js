@@ -19,16 +19,33 @@ const EmailService = require('./services/emailService');
 const WhatsAppService = require('./services/whatsappService');
 const SMSService = require('./services/smsService');
 
-// Add proxy rotation and user agent management for Justdial scraper
+// Enhanced Proxy Rotator with better anti-detection
 class ProxyRotator {
   constructor() {
     this.userAgents = [
+      // Latest Chrome user agents
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+      // Firefox user agents
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
+      // Edge user agents
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36 Edg/119.0.0.0',
+      // Safari user agents
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     ];
+    
+    this.acceptLanguages = [
+      'en-US,en;q=0.9,en-GB;q=0.8,en;q=0.7',
+      'en-GB,en-US;q=0.9,en;q=0.8',
+      'en-US,en;q=0.8',
+      'en-GB,en;q=0.9'
+    ];
+    
+    this.platforms = ['Win32', 'Win64', 'MacIntel', 'Linux x86_64'];
   }
   
   getRandomUserAgent() {
@@ -41,9 +58,31 @@ class ProxyRotator {
       { width: 1440, height: 900 },
       { width: 1536, height: 864 },
       { width: 1920, height: 1080 },
-      { width: 1280, height: 720 }
+      { width: 1280, height: 720 },
+      { width: 1600, height: 900 },
+      { width: 1280, height: 800 }
     ];
     return viewports[Math.floor(Math.random() * viewports.length)];
+  }
+  
+  getRandomAcceptLanguage() {
+    return this.acceptLanguages[Math.floor(Math.random() * this.acceptLanguages.length)];
+  }
+  
+  getRandomPlatform() {
+    return this.platforms[Math.floor(Math.random() * this.platforms.length)];
+  }
+  
+  getRandomScreenSize() {
+    const screens = [
+      { width: 1920, height: 1080 },
+      { width: 1366, height: 768 },
+      { width: 1440, height: 900 },
+      { width: 1536, height: 864 },
+      { width: 1600, height: 900 },
+      { width: 1280, height: 720 }
+    ];
+    return screens[Math.floor(Math.random() * screens.length)];
   }
 }
 
@@ -66,6 +105,25 @@ const limiter = rateLimit({
     message: 'Too many requests from this IP, please try again later.'
 });
 app.use('/api/excel-scraper/', limiter);
+
+// Add request delay middleware to prevent rapid requests
+app.use('/api/scrape', (req, res, next) => {
+  // Add random delay to prevent rate limiting
+  const delay = Math.random() * 2000 + 1000; // 1-3 seconds random delay
+  setTimeout(next, delay);
+});
+
+// Rate limiting - more restrictive to prevent IP blocking
+const scrapingLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 50, // Limit each IP to 50 requests per windowMs (increased from 3)
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skipFailedRequests: false
+});
+app.use('/api/', scrapingLimiter);
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -138,24 +196,6 @@ const fileUploadHistorySchema = new mongoose.Schema({
 
 const FileUploadHistory = mongoose.model('FileUploadHistory', fileUploadHistorySchema);
 
-// JustDial Scraper History Schema
-const justdialHistorySchema = new mongoose.Schema({
-    url: String,
-    category: String,
-    businessCount: Number,
-    scrapeDate: { type: Date, default: Date.now },
-    scrapeType: { type: String, enum: ['single', 'bulk'], default: 'single' },
-    data: [{
-        name: String,
-        phone: String,
-        address: String,
-        city: String,
-        category: String,
-        image: String
-    }]
-});
-
-const JustdialHistory = mongoose.model('JustdialHistory', justdialHistorySchema);
 
 // Google Maps Scraper History Schema
 const googleMapsHistorySchema = new mongoose.Schema({
@@ -174,6 +214,26 @@ const googleMapsHistorySchema = new mongoose.Schema({
 
 const GoogleMapsHistory = mongoose.model('GoogleMapsHistory', googleMapsHistorySchema);
 
+// Justdial Scraper History Schema
+const justdialHistorySchema = new mongoose.Schema({
+    url: String,
+    category: String,
+    businessCount: Number,
+    scrapeDate: { type: Date, default: Date.now },
+    status: { type: String, default: 'completed' },
+    data: [{
+        name: String,
+        phone: String,
+        email: String,
+        address: String,
+        category: String,
+        rating: String,
+        reviews: String
+    }]
+});
+
+const JustdialHistory = mongoose.model('JustdialHistory', justdialHistorySchema);
+
 // Excel Scraper utilities
 // Enhanced email regex for better extraction
 const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/gi;
@@ -190,7 +250,38 @@ const additionalEmailPatterns = [
 const extractPhoneNumbers = (text) => {
     let phones = text.match(phoneRegex) || [];
     
+    // Handle concatenated phone-email patterns like "0124-4326628thedentalhomeggn@gmail.com"
     if (phones.length === 0) {
+        // Pattern 1: phone number followed immediately by email
+        const concatenatedPattern = /(\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{4})([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+        const concatMatches = [...text.matchAll(concatenatedPattern)];
+        
+        concatMatches.forEach(match => {
+            phones.push(match[1]); // Extract just the phone part
+        });
+        
+        // Pattern 2: Find phone numbers at the start of strings that are followed by emails
+        const phoneAtStartPattern = /^(\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{4})[a-zA-Z]*@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+        const phoneAtStartMatches = [...text.matchAll(phoneAtStartPattern)];
+        
+        phoneAtStartMatches.forEach(match => {
+            phones.push(match[1]);
+        });
+        
+        // Pattern 3: Extract phone numbers from mixed patterns like "122002enquiriesthedentalhomeggn@gmail.comcall"
+        // This finds phone numbers that are followed by letters and then an email
+        const mixedPattern = /^(\d{6,})[a-zA-Z]+[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+        const mixedMatches = [...text.matchAll(mixedPattern)];
+        
+        mixedMatches.forEach(match => {
+            const phonePart = match[1];
+            // Try to format the phone number if it's 6+ digits
+            if (phonePart.length >= 6 && phonePart.length <= 15) {
+                phones.push(phonePart);
+            }
+        });
+        
+        // Pattern: phone number with separators and then email
         const splitPattern = /\b(\d{2,4})\b[\s·.-]+\b(\d{5,8})\b/g;
         const matches = [...text.matchAll(splitPattern)];
         
@@ -230,6 +321,179 @@ const extractPhoneNumbers = (text) => {
         });
     
     return uniquePhones.slice(0, 5);
+};
+
+// Enhanced email extraction function for complex formats
+const extractEmails = (text) => {
+    if (!text || typeof text !== 'string') return [];
+    
+    const emails = [];
+    
+    // Pattern 1: Standard email regex
+    const standardEmailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+    const standardMatches = text.match(standardEmailRegex) || [];
+    emails.push(...standardMatches);
+    
+    // Pattern 2: Handle concatenated emails like "thedentalcureg@gmail.comthedentalcureg"
+    const concatenatedRegex = /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+    const concatenatedMatches = text.match(concatenatedRegex) || [];
+    emails.push(...concatenatedMatches);
+    
+    // Pattern 3: Handle UUID-style emails (sentry/wixpress style)
+    const uuidRegex = /\b[a-f0-9]{32}@(?:sentry(?:-next)?\.wixpress\.com|sentry\.io)\b/g;
+    const uuidMatches = text.match(uuidRegex) || [];
+    emails.push(...uuidMatches);
+    
+    // Pattern 4: Handle emails with domain duplication like "gmail.comthedentalcureg@gmail.com"
+    const domainDuplicationRegex = /(?:[a-z]+\.(?:com|net|org|co|in))?([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+    const domainDuplicationMatches = text.match(domainDuplicationRegex) || [];
+    emails.push(...domainDuplicationMatches);
+    
+    // Pattern 5: Handle phone+email combinations
+    const phoneEmailRegex = /(?:\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{4,})?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    const phoneEmailMatches = text.match(phoneEmailRegex) || [];
+    emails.push(...phoneEmailMatches);
+    
+    // Pattern 6: Handle mixed content with action words
+    const mixedContentRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?:phone|call|book|schedule|homeabout|info|enquiries)?/g;
+    const mixedContentMatches = text.match(mixedContentRegex) || [];
+    emails.push(...mixedContentMatches);
+    
+    // Pattern 7: Extract emails from complex concatenated strings
+    // Examples: "himanshu.a178@gmail.comhimanshu.a178@gmail.com"
+    const complexConcatRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+    const complexConcatMatches = text.match(complexConcatRegex) || [];
+    emails.push(...complexConcatMatches);
+    
+    // Remove duplicates and filter valid emails
+    const uniqueEmails = [...new Set(emails)]
+        .map(email => email.toLowerCase().trim().replace(/^mailto:/, ''))
+        .filter(email => {
+            // Basic validation
+            if (!email || typeof email !== 'string') return false;
+            
+            // Exclude common test/example domains
+            if (email.includes('example.com') || 
+                email.includes('test.com') || 
+                email.includes('sample.com') ||
+                email.includes('domain.com')) return false;
+            
+            // Exclude file extensions
+            if (email.match(/\.(png|jpg|jpeg|gif|css|js)$/)) return false;
+            
+            // Must contain @ and . and be reasonable length
+            if (!email.includes('@') || !email.includes('.') || email.length <= 5) return false;
+            
+            const parts = email.split('@');
+            if (parts.length !== 2) return false;
+            
+            const [username, domain] = parts;
+            if (!username || !domain || username.length === 0 || domain.length <= 3) return false;
+            
+            if (username.length > 50 || domain.length > 100) return false;
+            
+            // Domain validation
+            if (!domain.includes('.')) return false;
+            
+            // Username shouldn't start with digit (but allow for some cases)
+            if (username.match(/^\d{10,}$/)) return false; // Exclude pure numbers
+            
+            return true;
+        })
+        .slice(0, 5); // Limit to 5 emails per entry
+
+    return uniqueEmails;
+};
+
+// Email validation function
+const isValidEmail = (email) => {
+    if (!email || typeof email !== 'string') return false;
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    return emailRegex.test(email.trim());
+};
+
+// Email correction function
+const correctEmail = (email) => {
+    if (!email || typeof email !== 'string') return null;
+    
+    // First try to extract valid emails from the text
+    const extractedEmails = extractEmails(email);
+    if (extractedEmails.length > 0) {
+        return extractedEmails[0]; // Return the first valid email found
+    }
+    
+    let corrected = email.trim().toLowerCase();
+    
+    // Remove common separators and spaces
+    corrected = corrected.replace(/[\s_\-]+/g, '');
+    
+    // Remove phone numbers and other non-email text
+    corrected = corrected.replace(/\d{3,}[-\s]?\d{3,}[-\s]?\d{4,}/g, '');
+    corrected = corrected.replace(/phone|call|book|schedule|homeabout|info|enquiries/g, '');
+    
+    // Remove extra @ symbols if multiple exist
+    const atCount = (corrected.match(/@/g) || []).length;
+    if (atCount > 1) {
+        // Keep only the last @ symbol
+        const parts = corrected.split('@');
+        const localPart = parts.slice(0, -1).join('');
+        const domain = parts[parts.length - 1];
+        corrected = localPart + '@' + domain;
+    }
+    
+    // Fix common domain mistakes
+    const domainFixes = {
+        'gmial.com': 'gmail.com',
+        'gamil.com': 'gmail.com',
+        'gmail.co': 'gmail.com',
+        'yahoo.co': 'yahoo.com',
+        'yahho.com': 'yahoo.com',
+        'hotmial.com': 'hotmail.com',
+        'outlok.com': 'outlook.com',
+        'rediffmail.co': 'rediffmail.com'
+    };
+    
+    Object.entries(domainFixes).forEach(([wrong, correct]) => {
+        if (corrected.endsWith(wrong)) {
+            corrected = corrected.replace(wrong, correct);
+        }
+    });
+    
+    // Validate the corrected email
+    if (isValidEmail(corrected)) {
+        return corrected;
+    }
+    
+    return null;
+};
+
+// Test function for backend email processing
+const testEmailProcessing = () => {
+    const testCases = [
+        '605a7baede844d278b89dc95ae0a9123@sentry-next.wixpress.com',
+        'dd0a55ccb8124b9c9d938e3acf41f8aa@sentry.wixpress.com',
+        'c183baa23371454f99f417f6616b724d@sentry.wixpress.com',
+        'thedentalcureg@gmail.comthedentalcureg',
+        'gmail.comthedentalcureg@gmail.com',
+        'ismilegurgaon@gmail.comhomeabout',
+        'ismilegurgaon@gmail.comschedule,0124-4326628thedentalhomeggn@gmail.comc',
+        '122002enquiriesthedentalhomeggn@gmail.comcall',
+        '0124-4326628thedentalhomeggn@gmail.comcall,info@thegentledentalclinic.cominfo',
+        'drsahilmaghu@gmail.comdrsahilmaghu',
+        'gmail.comdrsahilmaghu@gmail.comdrsahilmaghu,himanshu.a178@gmail.comhimanshu',
+        '.a178@gmail.com,98102-44656drbhutani@yahoo.com,garima_clinic@yahoo.inbook',
+        'garima_clinic@yahoo.inphone'
+    ];
+
+    console.log('=== BACKEND EMAIL PROCESSING TEST ===');
+    testCases.forEach((testCase, index) => {
+        const extracted = extractEmails(testCase);
+        const corrected = correctEmail(testCase);
+        console.log(`Test ${index + 1}: "${testCase}"`);
+        console.log(`  Extracted: ${extracted.length > 0 ? extracted.join(', ') : 'None'}`);
+        console.log(`  Corrected: ${corrected || 'None'}`);
+        console.log('---');
+    });
 };
 
 // Extract address from mixed content (like rllt_detail1 column)
@@ -374,17 +638,6 @@ const extractEmailsFromPDF = async (filePath) => {
     }
 };
 
-// Helper function to clean category names for Justdial scraper
-function cleanCategoryName(category) {
-  if (!category) return '';
-  
-  return category
-    .replace(/-/g, ' ')  // Replace hyphens with spaces
-    .replace(/in\s*Sai\s*Kunj/gi, '')  // Remove 'in-Sai-Kunj'
-    .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
-    .replace(/\b\w/g, l => l.toUpperCase())  // Capitalize first letter of each word
-    .trim();
-}
 
 // Company categorization function based on company name analysis
 const categorizeCompany = (companyName) => {
@@ -1161,14 +1414,21 @@ const processExcelFile = async (filePath) => {
                 if (!extractedUrl || extractedUrl.trim() === '') {
                     let cleanedPhone = '';
                     if (existingPhone && existingPhone.trim()) {
-                        const phoneMatches = existingPhone.match(phoneRegex) || [];
+                        const phoneMatches = extractPhoneNumbers(existingPhone);
                         cleanedPhone = phoneMatches.join(', ').trim();
                     }
                     
                     let cleanedEmail = '';
                     if (existingEmail && existingEmail.trim()) {
-                        const emailMatches = existingEmail.match(emailRegex) || [];
-                        cleanedEmail = emailMatches.join(', ').trim();
+                        // First try to extract emails from complex formats
+                        const emailMatches = extractEmails(existingEmail);
+                        if (emailMatches.length > 0) {
+                            cleanedEmail = emailMatches.join(', ').trim();
+                        } else {
+                            // If no emails found, try to correct the existing email format
+                            const correctedEmail = correctEmail(existingEmail);
+                            cleanedEmail = correctedEmail || '';
+                        }
                     }
                     
                     return {
@@ -1193,8 +1453,15 @@ const processExcelFile = async (filePath) => {
                 
                 let cleanedExistingEmail = '';
                 if (existingEmail && existingEmail.trim()) {
-                    const emailMatches = existingEmail.match(emailRegex) || [];
-                    cleanedExistingEmail = emailMatches.join(', ').trim();
+                    // First try to extract emails from complex formats
+                    const emailMatches = extractEmails(existingEmail);
+                    if (emailMatches.length > 0) {
+                        cleanedExistingEmail = emailMatches.join(', ').trim();
+                    } else {
+                        // If no emails found, try to correct the existing email format
+                        const correctedEmail = correctEmail(existingEmail);
+                        cleanedExistingEmail = correctedEmail || '';
+                    }
                 }
                 
                 if (cleanedExistingPhone && cleanedExistingEmail) {
@@ -1265,7 +1532,19 @@ const emailService = new EmailService();
 const whatsappService = new WhatsAppService();
 const smsService = new SMSService();
 
-// Justdial Scraper Service with Multi-Page Support
+// Helper function to clean category names
+function cleanCategoryName(category) {
+  if (!category) return '';
+  
+  return category
+    .replace(/-/g, ' ')  // Replace hyphens with spaces
+    .replace(/in\s*Sai\s*Kunj/gi, '')  // Remove 'in-Sai-Kunj'
+    .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+    .replace(/\b\w/g, l => l.toUpperCase())  // Capitalize first letter of each word
+    .trim();
+}
+
+// JustdialScraper Class
 class JustdialScraper {
   constructor() {
     this.browser = null;
@@ -1273,16 +1552,13 @@ class JustdialScraper {
   }
 
   async initialize() {
-    // Add random delay to prevent rate limiting
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 3000));
-    
-    // Try multiple Chrome launch strategies
-    const launchOptions = [
-      {
-        // Strategy 1: Use Puppeteer's built-in Chrome
+    try {
+      console.log('Initializing Justdial scraper...');
+      
+      const launchOptions = {
         headless: "new",
         protocolTimeout: 300000,
-        defaultViewport: null,
+        defaultViewport: proxyRotator.getRandomViewport(),
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -1308,131 +1584,135 @@ class JustdialScraper {
           '--disable-features=CrossSiteDocumentBlockingIfIsolating',
           '--disable-features=CrossSiteDocumentBlockingAlways'
         ]
-      },
-      {
-        // Strategy 2: Use system Chrome with executablePath
-        headless: "new",
-        protocolTimeout: 300000,
-        defaultViewport: null,
-        executablePath: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process'
-        ]
-      },
-      {
-        // Strategy 3: Use system Chrome without executablePath
-        headless: "new",
-        protocolTimeout: 300000,
-        defaultViewport: null,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-          '--disable-web-security',
-          '--disable-features=IsolateOrigins,site-per-process'
-        ]
-      }
-    ];
-    
-    let lastError = null;
-    for (const options of launchOptions) {
-      try {
-        console.log('Trying Chrome launch strategy:', options.executablePath ? 'System Chrome' : 'Puppeteer Chrome');
-        this.browser = await puppeteer.launch(options);
-        console.log('Chrome launched successfully!');
-        break;
-      } catch (error) {
-        console.log('Chrome launch strategy failed:', error.message);
-        lastError = error;
-      }
-    }
-    
-    if (!this.browser) {
-      throw new Error(`Failed to launch Chrome: ${lastError?.message || 'Unknown error'}`);
-    }
-    this.page = await this.browser.newPage();
-    
-    // Enhanced anti-detection script
-    await this.page.evaluateOnNewDocument(() => {
-      // Remove webdriver traces
-      Object.defineProperty(navigator, 'webdriver', {
-        get: () => undefined,
-      });
-      
-      // Override permissions API
-      const originalQuery = window.navigator.permissions.query;
-      window.navigator.permissions.query = (parameters) => (
-        parameters.name === 'notifications' ?
-          Promise.resolve({ state: Notification.permission }) :
-          originalQuery(parameters)
-      );
-      
-      // Override plugins
-      Object.defineProperty(navigator, 'plugins', {
-        get: () => [
-          {
-            0: { type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format" },
-            description: "Portable Document Format",
-            filename: "internal-pdf-viewer",
-            length: 1,
-            name: "Chrome PDF Plugin"
-          }
-        ],
-      });
-      
-      // Override languages
-      Object.defineProperty(navigator, 'languages', {
-        get: () => ['en-US', 'en'],
-      });
-      
-      // Override platform
-      Object.defineProperty(navigator, 'platform', {
-        get: () => 'Win32',
-      });
-      
-      // Override chrome object
-      window.chrome = {
-        runtime: {},
-        loadTimes: function() {},
-        csi: function() {},
-        app: {}
       };
-    });
+
+      this.browser = await puppeteer.launch(launchOptions);
+      this.page = await this.browser.newPage();
+      
+      // Set random user agent
+      await this.page.setUserAgent(proxyRotator.getRandomUserAgent());
+      
+      // Set additional headers to mimic real browser
+      await this.page.setExtraHTTPHeaders({
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Upgrade-Insecure-Requests': '1'
+      });
+
+      // Anti-detection script
+      await this.page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', {
+          get: () => undefined,
+        });
+        
+        Object.defineProperty(navigator, 'plugins', {
+          get: () => [1, 2, 3, 4, 5],
+        });
+        
+        Object.defineProperty(navigator, 'languages', {
+          get: () => ['en-US', 'en'],
+        });
+        
+        window.chrome = {
+          runtime: {},
+        };
+        
+        const originalQuery = window.navigator.permissions.query;
+        return window.navigator.permissions.query = (parameters) => (
+          parameters.name === 'notifications' ?
+            Promise.resolve({ state: Notification.permission }) :
+            originalQuery(parameters)
+        );
+      });
+
+      console.log('Justdial scraper initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('Failed to initialize Justdial scraper:', error);
+      return false;
+    }
+  }
+
+  // Helper function to categorize companies
+  categorizeCompany(companyName) {
+    if (!companyName || typeof companyName !== 'string') {
+      return 'Business/Other';
+    }
     
-    // Set random user agent
-    const userAgent = proxyRotator.getRandomUserAgent();
-    await this.page.setUserAgent(userAgent);
+    const name = companyName.toLowerCase().trim();
     
-    // Set random viewport
-    const viewport = proxyRotator.getRandomViewport();
-    await this.page.setViewport(viewport);
+    // Electrical categories
+    if (name.includes('electrical') || name.includes('electrician') || name.includes('wiring') || 
+        name.includes('contractor') || name.includes('repair')) {
+      return 'Electrical Services';
+    }
     
-    // Enhanced headers to look more like a real browser
-    await this.page.setExtraHTTPHeaders({
-      'Accept-Language': 'en-US,en;q=0.9,en-GB;q=0.8,en;q=0.7',
-      'Accept-Encoding': 'gzip, deflate, br, zstd',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
-      'Cache-Control': 'max-age=0',
-      'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': '"Windows"',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-User': '?1',
-      'Upgrade-Insecure-Requests': '1',
-      'DNT': '1',
-      'Connection': 'keep-alive'
-    });
+    // Medical categories
+    if (name.includes('doctor') || name.includes('hospital') || name.includes('clinic') || 
+        name.includes('medical') || name.includes('health')) {
+      return 'Healthcare/Medical';
+    }
     
-    // Add random human-like delay
-    await new Promise(resolve => setTimeout(resolve, Math.random() * 4000 + 2000));
+    // Education categories
+    if (name.includes('school') || name.includes('college') || name.includes('university') || 
+        name.includes('institute') || name.includes('education')) {
+      return 'Education';
+    }
+    
+    // Food categories
+    if (name.includes('restaurant') || name.includes('hotel') || name.includes('cafe') || 
+        name.includes('food') || name.includes('dining')) {
+      return 'Food & Dining';
+    }
+    
+    // Shopping categories
+    if (name.includes('shop') || name.includes('store') || name.includes('mall') || 
+        name.includes('retail') || name.includes('market')) {
+      return 'Shopping/Retail';
+    }
+    
+    // Service categories
+    if (name.includes('service') || name.includes('solution') || name.includes('consultant') || 
+        name.includes('agency') || name.includes('professional')) {
+      return 'Professional Services';
+    }
+    
+    return 'Business/Other';
+  }
+
+  // Helper function to clean category names
+  cleanCategoryName(category) {
+    if (!category || typeof category !== 'string') {
+      return 'General';
+    }
+    
+    let cleaned = category.trim();
+    
+    // Remove common prefixes and suffixes
+    cleaned = cleaned.replace(/^(in|at|for|of|near|the)\s+/i, '');
+    cleaned = cleaned.replace(/\s+(in|at|for|of|near|the)$/i, '');
+    
+    // Remove special characters and extra spaces
+    cleaned = cleaned.replace(/[^\w\s-]/g, ' ').replace(/\s+/g, ' ').trim();
+    
+    // Capitalize first letter of each word
+    cleaned = cleaned.split(' ').map(word => 
+      word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+    ).join(' ');
+    
+    // Limit length
+    if (cleaned.length > 50) {
+      cleaned = cleaned.substring(0, 47) + '...';
+    }
+    
+    return cleaned || 'General';
   }
 
   async scrapeBusinessData(url, detectedCategory = '') {
@@ -1448,22 +1728,35 @@ class JustdialScraper {
       
       console.log('Navigating to URL:', url);
       
-      // Add initial delay to prevent rate limiting
-      await new Promise(resolve => setTimeout(resolve, Math.random() * 6000 + 4000));
-      
-      // Enhanced navigation with multiple attempts
+      // Enhanced navigation with exponential backoff
       let accessDenied = true;
       let attempts = 0;
       const maxAttempts = 5;
+      let baseDelay = 4000;
       
       while (accessDenied && attempts < maxAttempts) {
         attempts++;
         console.log(`Attempt ${attempts} of ${maxAttempts}`);
         
         try {
+          // Calculate exponential backoff delay
+          const delay = baseDelay * Math.pow(2, attempts - 1) + Math.random() * 2000;
+          
           if (attempts > 1) {
-            console.log('Waiting before retry to prevent rate limiting...');
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 10000 + 8000));
+            console.log(`Waiting ${Math.round(delay/1000)}s before retry to prevent rate limiting...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            
+            // Add human-like interactions before retry
+            await this.page.evaluate(() => {
+              window.scrollTo(0, Math.floor(Math.random() * 300));
+              document.dispatchEvent(new MouseEvent('mousemove', {
+                clientX: Math.random() * window.innerWidth,
+                clientY: Math.random() * window.innerHeight
+              }));
+              document.dispatchEvent(new MouseEvent('scroll', {
+                clientY: Math.random() * 100
+              }));
+            });
           }
           
           // Navigate with different wait strategies
@@ -1475,7 +1768,7 @@ class JustdialScraper {
             await this.page.goto(url, { waitUntil: 'load', timeout: 60000 });
           }
           
-          // Wait for content to load
+          // Wait for content to load with random delay
           await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 3000));
           
           // Check for access denied
@@ -1485,6 +1778,7 @@ class JustdialScraper {
           console.log('Page title:', pageTitle);
           console.log('Current URL:', this.page.url());
           
+          // Enhanced access denied detection
           accessDenied = 
             pageTitle.includes('Access Denied') ||
             pageTitle.includes('403') ||
@@ -1493,6 +1787,8 @@ class JustdialScraper {
             pageTitle.includes('CAPTCHA') ||
             pageTitle.includes('Security Check') ||
             pageTitle.includes('Too Many Requests') ||
+            pageTitle.includes('Justdial - Error') ||
+            pageTitle.includes('Page not found') ||
             pageContent.includes('Access Denied') ||
             pageContent.includes('403 Forbidden') ||
             pageContent.includes('captcha') ||
@@ -1501,21 +1797,29 @@ class JustdialScraper {
             pageContent.includes('rate limit') ||
             pageContent.includes('too many requests') ||
             pageContent.includes('cloudflare') ||
-            pageContent.includes('challenge');
+            pageContent.includes('challenge') ||
+            pageContent.includes('bot detection') ||
+            pageContent.includes('suspicious activity');
           
           if (accessDenied) {
             console.log('Access denied/rate limited detected, trying different approach...');
             
             if (attempts === 1) {
-              await this.page.evaluate(() => {
-                window.scrollTo(0, Math.floor(Math.random() * 500));
-                document.dispatchEvent(new MouseEvent('mousemove', {
-                  clientX: Math.random() * window.innerWidth,
-                  clientY: Math.random() * window.innerHeight
-                }));
-              });
-              await new Promise(resolve => setTimeout(resolve, 3000));
+              // Try refreshing the page
               await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+            } else if (attempts === 2) {
+              // Try navigating to a different page first
+              await this.page.goto('https://www.justdial.com', { waitUntil: 'domcontentloaded', timeout: 30000 });
+              await new Promise(resolve => setTimeout(resolve, 2000));
+              await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+            } else if (attempts === 3) {
+              // Try clearing cookies and navigating again
+              await this.page.evaluate(() => {
+                document.cookie.split(";").forEach(function(c) { 
+                  document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+                });
+              });
+              await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
             }
           } else {
             console.log('Successfully accessed the page!');
@@ -1587,15 +1891,15 @@ class JustdialScraper {
     
     let allBusinesses = [];
     let currentPage = 1;
-    const maxPages = 100; // Increased limit to get more businesses
+    const maxPages = 50; // Increased to allow more pages for 100+ businesses
     let loadMoreFound = true;
     let consecutiveEmptyPages = 0;
-    const maxEmptyPages = 5; // Stop after 5 empty pages
+    const maxEmptyPages = 5; // Allow more empty pages before stopping
     
     while (loadMoreFound && currentPage <= maxPages && allBusinesses.length < 200) {
       console.log(`=== PROCESSING PAGE ${currentPage} COMPLETELY ===`);
       
-      // Step 1: Wait for initial content to load
+      // ... (rest of the code remains the same)
       console.log(`Page ${currentPage}: Waiting for initial content to load...`);
       await new Promise(resolve => setTimeout(resolve, 3000));
       
@@ -1633,10 +1937,10 @@ class JustdialScraper {
         consecutiveEmptyPages = 0;
       }
       
-      // Step 5: Check if there are more pages to process
+      // Step 7: Enhanced pagination detection - try multiple methods
       console.log(`Page ${currentPage}: Looking for next page or load more button...`);
       loadMoreFound = await this.page.evaluate(() => {
-        // Look for "Load More" button
+        // Method 1: Look for "Load More" button with enhanced selectors
         const loadMoreSelectors = [
           'button[class*="load"]',
           'button[class*="more"]',
@@ -1648,52 +1952,112 @@ class JustdialScraper {
           '.show-more',
           '.view-more',
           '[data-testid*="load"]',
-          '[data-testid*="more"]'
+          '[data-testid*="more"]',
+          'button:contains("Load More")',
+          'button:contains("Show More")',
+          'button:contains("View More")',
+          'a:contains("Load More")',
+          'a:contains("Show More")',
+          'a:contains("View More")',
+          'button[aria-label*="more"]',
+          'button[aria-label*="load"]',
+          'div[role="button"]:contains("More")'
         ];
         
         for (const selector of loadMoreSelectors) {
-          const elements = document.querySelectorAll(selector);
-          for (const element of elements) {
-            const text = element.textContent?.toLowerCase() || '';
-            if (text.includes('load') || text.includes('more') || text.includes('view')) {
-              console.log(`Found load more element: ${selector} - "${text}"`);
-              element.scrollIntoView({ behavior: 'instant', block: 'center' });
-              element.click();
-              return true;
+          try {
+            const elements = document.querySelectorAll(selector);
+            for (const element of elements) {
+              const text = element.textContent?.toLowerCase() || '';
+              const isVisible = element.offsetParent !== null;
+              
+              if (isVisible && (text.includes('load') || text.includes('more') || text.includes('view') || text.includes('show'))) {
+                console.log(`Found load more element: ${selector} - "${text}"`);
+                element.scrollIntoView({ behavior: 'instant', block: 'center' });
+                element.click();
+                return true;
+              }
             }
+          } catch (e) {
+            // Continue with next selector
           }
         }
         
-        // Look for pagination links
+        // Method 2: Look for pagination links with enhanced detection
         const paginationSelectors = [
           'a[href*="page-"]',
           'a[class*="page"]',
           'li[class*="page"] a',
           '.pagination a',
-          '[data-testid*="page"]'
+          '[data-testid*="page"]',
+          'nav[aria-label*="pagination"] a',
+          '.pager a',
+          'a[href*="?page="]',
+          'a[href*="&page="]'
         ];
         
         for (const selector of paginationSelectors) {
-          const elements = document.querySelectorAll(selector);
-          for (const element of elements) {
-            const text = element.textContent?.trim() || '';
-            const href = element.getAttribute('href') || '';
+          try {
+            const elements = document.querySelectorAll(selector);
+            for (const element of elements) {
+              const text = element.textContent?.trim() || '';
+              const href = element.getAttribute('href') || '';
+              const isVisible = element.offsetParent !== null;
+              
+              // Look for next page link
+              if (isVisible && ((text.includes('Next') || text.includes('>') || text.includes('›') || href.includes('page-') || href.includes('?page=')) && 
+                  !text.includes('Previous') && !text.includes('<') && !text.includes('‹'))) {
+                console.log(`Found pagination link: ${selector} - "${text}" - ${href}`);
+                element.scrollIntoView({ behavior: 'instant', block: 'center' });
+                element.click();
+                return true;
+              }
+            }
+          } catch (e) {
+            // Continue with next selector
+          }
+        }
+        
+        // Method 3: Look for numbered pagination
+        try {
+          const pageLinks = document.querySelectorAll('a[href*="page"], .pagination a, .pager a');
+          const currentPageNum = parseInt(window.location.search.match(/page=(\d+)/)?.[1] || '1');
+          
+          for (const link of pageLinks) {
+            const pageNum = parseInt(link.textContent?.trim() || '0');
+            const href = link.getAttribute('href') || '';
+            const isVisible = link.offsetParent !== null;
             
-            // Look for next page link
-            if ((text.includes('Next') || text.includes('>') || href.includes('page-')) && 
-                !text.includes('Previous') && !text.includes('<')) {
-              console.log(`Found pagination link: ${selector} - "${text}" - ${href}`);
-              element.scrollIntoView({ behavior: 'instant', block: 'center' });
-              element.click();
+            if (isVisible && pageNum === currentPageNum + 1) {
+              console.log(`Found numbered pagination: page ${pageNum} - ${href}`);
+              link.scrollIntoView({ behavior: 'instant', block: 'center' });
+              link.click();
               return true;
             }
           }
+        } catch (e) {
+          // Continue
+        }
+        
+        // Method 4: Try to scroll down to trigger infinite scroll
+        try {
+          const scrollHeight = document.body.scrollHeight;
+          const currentScroll = window.scrollY;
+          const windowHeight = window.innerHeight;
+          
+          if (currentScroll + windowHeight < scrollHeight - 100) {
+            console.log('Scrolling down to trigger infinite scroll...');
+            window.scrollTo(0, scrollHeight);
+            return true;
+          }
+        } catch (e) {
+          // Continue
         }
         
         return false;
       });
       
-      // Step 6: Move to next page if available
+      // Step 8: Move to next page if available
       if (loadMoreFound) {
         console.log(`Page ${currentPage}: Moving to next page...`);
         await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for new content to load
@@ -1775,76 +2139,88 @@ class JustdialScraper {
         console.log('=== EXTRACTING BUSINESSES FROM CURRENT PAGE ===');
         const businesses = [];
         
-        // Use comprehensive selectors
+        // Use comprehensive selectors for 2024 Justdial structure
         let listings = [];
         
+        // Updated selector list based on current Justdial structure (2024)
         const possibleSelectors = [
-          // Enhanced 2024 Justdial selectors
-          '.jsx-4235315401',
-          '.jsx-2806317444',
-          '.jsx-2622435384',
-          '.result-card',
-          '.listing-container',
-          '.jsx-3788266411',
-          'div[class*="jsx"]:has(h2)',
-          'div[class*="jsx"]:has(h3)',
+          // Modern Justdial result selectors - updated for 2024
+          '[data-testid*="result"]',
+          '[data-testid*="listing"]',
+          '[data-testid*="business"]',
+          '[data-testid*="card"]',
+          '[data-testid*="item"]',
+          
+          // Justdial specific class patterns (2024)
+          'div[class*="ResultContainer"]',
+          'div[class*="ListingContainer"]',
+          'div[class*="BusinessCard"]',
+          'div[class*="ServiceCard"]',
+          'div[class*="ResultCard"]',
+          'div[class*="InfoCard"]',
+          
+          // Generic but effective patterns
           'div[class*="result"]',
           'div[class*="listing"]',
           'div[class*="card"]',
+          'div[class*="item"]',
           'div[class*="business"]',
-          'div[class*="company"]',
-          'div[class*="store"]',
           'div[class*="service"]',
           'div[class*="vendor"]',
           'div[class*="provider"]',
+          
+          // React/Next.js patterns (common in modern Justdial)
+          'div[class*="jsx-"][class*="result"]',
+          'div[class*="jsx-"][class*="listing"]',
+          'div[class*="jsx-"][class*="card"]',
+          'div[class*="jsx-"][class*="item"]',
+          'div[class*="jsx-"][class*="container"]',
+          
+          // Phone-based selectors (most reliable for business detection)
+          'div:has([class*="phone"])',
+          'div:has([class*="tel"])',
+          'div:has([class*="mobile"])',
+          'div:has([class*="call"])',
+          'div:has(a[href*="tel:"])',
+          'div:has(span[title*="Call"])',
+          'div:has(div[title*="Call"])',
+          'div:has([data-testid*="phone"])',
+          'div:has([data-testid*="contact"])',
+          'div:has([class*="contact"])',
+          
+          // Name-based selectors
+          'div:has(h1)',
+          'div:has(h2)',
+          'div:has(h3)',
+          'div:has(h4)',
+          'div:has([class*="name"])',
+          'div:has([class*="title"])',
+          'div:has([class*="heading"])',
+          'div:has([class*="business-name"])',
+          
+          // Address-based selectors
+          'div:has([class*="address"])',
+          'div:has([class*="location"])',
+          'div:has([class*="addr"])',
+          'div:has([class*="area"])',
+          'div:has([class*="city"])',
+          
+          // Rating-based selectors (Justdial always shows ratings)
+          'div:has([class*="rating"])',
+          'div:has([class*="star"])',
+          'div:has([class*="review"])',
+          'div:has([aria-label*="star"])',
+          'div:has([aria-label*="rating"])',
+          
+          // Generic structural selectors
           'article',
-          'section[class*="result"]',
-          'li[class*="result"]',
-          'div[class*="item"]',
-          'div[class*="entry"]',
-          'div[class*="contact"]:has([class*="phone"])',
-          'div[class*="info"]:has([class*="phone"])',
-          // Enhanced Justdial-specific selectors
-          'div[class*="jsx-"]:has([class*="phone"])',
-          'div[class*="jsx-"]:has([class*="tel"])',
-          'div[class*="jsx-"]:has(a[href*="tel:"])',
-          'div[class*="jsx-"]:has(span[title*="Call"])',
-          'div[class*="jsx-"]:has(div[title*="Call"])',
-          'div[class*="jsx-"]:has([data-testid*="phone"])',
-          'div[class*="jsx-"]:has([data-testid*="contact"])',
-          'div[class*="jsx-"]:has([class*="contact"])',
-          // Additional comprehensive selectors for maximum extraction
-          'div[class*="jsx-"]',
-          'div[style*="border"]',
-          'div[style*="padding"]',
-          'div[class*="container"]',
-          'div[class*="wrapper"]',
-          'div[class*="row"]',
-          'div[class*="col"]',
-          'div[class*="flex"]',
-          'div[class*="grid"]',
           'section',
-          'main',
-          'article',
           'li',
           'tr',
           'td',
-          // More generic selectors for dynamic content
-          'div[class*="-"]:has(h2, h3, h4)',
-          'div[class*="-"]:has(.phone, .tel, .mobile)',
-          'div[class*="-"]:has(a[href*="tel:"])',
-          'section:has(h2, h3, h4)',
-          'article:has(h2, h3, h4)',
-          'li:has(h2, h3, h4)',
-          'li:has(.phone, .tel, .mobile)',
-          'li:has(a[href*="tel:"])',
-          // Any div with phone number
-          'div:has(.phone)',
-          'div:has(.tel)',
-          'div:has(.mobile)',
-          'div:has(a[href*="tel:"])',
-          'div:has(span[title*="Call"])',
-          'div:has(div[title*="Call"])'
+          'div[style*="border"]',
+          'div[style*="padding"]',
+          'div[style*="margin"]'
         ];
         
         for (const selector of possibleSelectors) {
@@ -1857,26 +2233,42 @@ class JustdialScraper {
           }
         }
         
-        // Fallback: phone-based approach
+        // Enhanced fallback: ultra-aggressive phone-based approach with better validation
         if (listings.length === 0) {
-          console.log('Trying phone-based approach...');
+          console.log('Trying ultra-aggressive phone-based approach...');
           const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
           const allElements = document.querySelectorAll('*');
           const phoneElements = [];
+          let totalPhoneMatches = 0;
+          
+          console.log(`Scanning ${allElements.length} elements for phone numbers...`);
           
           allElements.forEach(element => {
             if (!element) return;
             const text = element.textContent || '';
             if (phoneRegex.test(text)) {
+              totalPhoneMatches++;
+              
+              // Enhanced validation for business elements
+              if (element.tagName === 'DIV' || element.tagName === 'ARTICLE' || element.tagName === 'SECTION' || element.tagName === 'LI') {
+                const elementText = element.textContent || '';
+                const hasValidBusinessContent = this.isValidBusinessContent(elementText);
+                
+                if (hasValidBusinessContent) {
+                  phoneElements.push(element);
+                }
+              }
+              
+              // Also check parents for business context with better validation
               let parent = element;
-              for (let i = 0; i < 5; i++) {
+              for (let i = 0; i < 8; i++) {
                 if (parent && parent.tagName === 'BODY') break;
                 
                 const parentText = parent.textContent || '';
                 const hasPhone = phoneRegex.test(parentText);
-                const hasBusinessKeywords = /business|company|store|shop|service|electrician|doctor|restaurant|hotel/i.test(parentText);
+                const hasValidBusinessContent = this.isValidBusinessContent(parentText);
                 
-                if (hasPhone && hasBusinessKeywords && parentText.length > 20 && parentText.length < 500) {
+                if (hasPhone && hasValidBusinessContent && parentText.length < 1000) {
                   phoneElements.push(parent);
                   break;
                 }
@@ -1888,7 +2280,260 @@ class JustdialScraper {
           
           const uniquePhoneElements = [...new Set(phoneElements)];
           listings = uniquePhoneElements;
-          console.log(`Phone-based approach found ${listings.length} unique elements`);
+          console.log(`Ultra-aggressive phone-based approach: Found ${totalPhoneMatches} phone matches, extracted ${listings.length} unique business elements`);
+        }
+        
+        // Helper function to validate business content
+        this.isValidBusinessContent = function(text) {
+          if (!text || text.length < 10 || text.length > 1000) return false;
+          
+          // Enhanced business keyword detection with Indian business context
+          const businessKeywords = /business|company|store|shop|service|electrician|doctor|restaurant|hotel|clinic|hospital|school|college|bank|atm|hotel|restaurant|cafe|salon|spa|gym|agency|office|center|centre|chartered|accountant|ca|firm|consultant|solution|professional|expert|specialist|provider|contact|call|phone|mobile|tel|address|location|area|city|rating|review|star|email|website|www|http|road|street|building|shop|market|complex|plaza|near|opposite|behind|above|below|next to|bazaar|market|nagar|colony|area|sector|phase|block|shop|store|service|dealer|distributor|supplier|manufacturer|trader|exporter|importer|wholesaler|retailer|agency|consultancy|organization|enterprise|establishment|outlet|branch|franchise/i;
+          
+          // Indian phone number patterns
+          const phonePatterns = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+          
+          const hasBusinessKeywords = businessKeywords.test(text);
+          const hasPhoneNumbers = phonePatterns.test(text);
+          const hasStructuredContent = text.includes('\n') || text.includes(',') || text.includes('•') || text.includes('-') || text.includes('|') || text.includes('·');
+          const hasMultipleWords = text.split(' ').length > 3;
+          const hasNumbers = /\d/.test(text);
+          const hasIndianPatterns = /nagar|colony|area|sector|phase|block|road|street|marg|gali|bazar|market|delhi|mumbai|bangalore|chennai|kolkata|hyderabad|pune|ahmedabad|surat|jaipur|lucknow|kanpur|nagpur|indore|thane|bhopal|visakhapatnam|pimpri|chinchwad|patna|vadodara|ghaziabad|ludhiana|agra|nashik|faridabad|meerut|rajkot|kalyan|vasai|virar|varanasi|srinagar|aurangabad|dhanbad|amritsar|allahabad|gwalior|vijayawada|jodhpur|madurai|raipur|kota|chandigarh|guwahati|solapur|hubli|dharwad|tiruchirappalli|bareilly|moradabad|mysore|tiruppur|gurgaon|aligarh|jalandhar|bhubaneswar|salem|mira|bhayander|thane|bhiwandi|saharanpur|gorakhpur|guntur|bikaner|indore|ajmer|kochi|coimbatore|thrissur|rajkot|jamshedpur|cuttack|firozabad|kochi|nellore|bhilai|bokaro|belgaum|aurangabad|bhopal|bhiwani|bathinda|shahjahanpur|karnal|panipat|ambala|rohtak|hisar|jind|kaithal|sonipat|kurukshetra|panchkula|yamunanagar|rewari|palwal|faridabad|ballabgarh|bahadurgarh|hansi|tohana|siwani|ratia|fatehabad|sirsa|dabwali|kalayat|pehowa|cheeka|guhla|ishar|kalan|kaithal|assandh|guhla|jind|safidon|pillu|uchana|narwana|barwala|rohtak|meham|beri|bahadurgarh|jhajjar|beri|matanhail|kairu|chhachhrauli|bhiwani|dadri|badhra|loharu|tosham|bhiwani|siwani|loharu|bhiwani|dadri|badhra|tosham|siwani|bhiwani|dadri|badhra|tosham|siwani/gi;
+          
+          // More lenient validation - if it has phone numbers or business indicators, consider it valid
+          return hasPhoneNumbers || (hasBusinessKeywords && (hasStructuredContent || hasMultipleWords || hasIndianPatterns));
+        };
+        
+        // Ultimate fallback: ultra-aggressive div detection with enhanced validation
+        if (listings.length === 0) {
+          console.log('Trying ultra-aggressive ultimate fallback...');
+          const allDivs = document.querySelectorAll('div');
+          const substantialDivs = [];
+          
+          allDivs.forEach(div => {
+            const text = div.textContent || '';
+            const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+            
+            // Enhanced validation with business content checker
+            const hasPhone = phoneRegex.test(text);
+            const hasValidBusinessContent = this.isValidBusinessContent(text);
+            const hasReasonableLength = text.length > 20 && text.length < 2000;
+            
+            // Add if multiple conditions are met
+            if (hasReasonableLength && hasValidBusinessContent && (hasPhone || text.includes('contact') || text.includes('phone'))) {
+              substantialDivs.push(div);
+            }
+          });
+          
+          listings = substantialDivs;
+          console.log(`Ultra-aggressive ultimate fallback found ${listings.length} substantial divs`);
+        }
+        
+        // Super fallback: Extract phone numbers directly from page content and create business entries
+        if (listings.length === 0) {
+          console.log('Trying super fallback - extracting businesses from phone numbers in page...');
+          const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+          const pageText = document.body.textContent || '';
+          const phoneMatches = pageText.match(phoneRegex);
+          
+          if (phoneMatches && phoneMatches.length > 0) {
+            console.log(`Found ${phoneMatches.length} phone numbers, creating business entries...`);
+            
+            // Create artificial div elements for each phone number found
+            const artificialListings = [];
+            const uniquePhones = [...new Set(phoneMatches)];
+            
+            uniquePhones.slice(0, 50).forEach((phone, index) => {
+              const artificialDiv = document.createElement('div');
+              
+              // Try to extract surrounding context for this phone number
+              const phoneIndex = pageText.indexOf(phone);
+              const contextStart = Math.max(0, phoneIndex - 200);
+              const contextEnd = Math.min(pageText.length, phoneIndex + phone.length + 200);
+              const context = pageText.substring(contextStart, contextEnd);
+              
+              // Try to extract a business name from the context
+              const businessName = this.extractBusinessNameFromContext(context, phone);
+              
+              artificialDiv.textContent = `${businessName}|${phone}|${context}`;
+              artificialDiv.setAttribute('data-artificial-business', 'true');
+              artificialDiv.setAttribute('data-phone-index', index);
+              artificialDiv.setAttribute('data-phone-number', phone);
+              artificialListings.push(artificialDiv);
+            });
+            
+            listings = artificialListings;
+            console.log(`Created ${listings.length} artificial business entries from phone numbers`);
+          }
+        }
+        
+        // Helper function to extract business name from context
+        this.extractBusinessNameFromContext = function(context, phone) {
+          // Remove the phone number from context
+          const cleanContext = context.replace(phone, '').replace(/\s+/g, ' ').trim();
+          
+          // Look for business name patterns
+          const namePatterns = [
+            /([A-Z][a-z]+\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/, // Capitalized words
+            /([A-Z][a-z]+\s+(?:Shop|Store|Service|Center|Clinic|Hospital|School|College|Bank|Hotel|Restaurant))/, // Business types
+            /([A-Z][a-z]+\s+(?:&|and)\s+[A-Z][a-z]+)/, // Business with &/and
+            /((?:[A-Z][a-z]+\s){1,3}[A-Z][a-z]+)/, // Multiple capitalized words
+          ];
+          
+          for (const pattern of namePatterns) {
+            const match = cleanContext.match(pattern);
+            if (match && match[1] && match[1].length > 3 && match[1].length < 50) {
+              return match[1];
+            }
+          }
+          
+          // Fallback: take the first capitalized word sequence
+          const words = cleanContext.split(' ');
+          let nameWords = [];
+          
+          for (const word of words) {
+            if (word.length > 2 && word[0] === word[0].toUpperCase() && word[0] !== word[0].toLowerCase()) {
+              nameWords.push(word);
+            } else if (nameWords.length > 0) {
+              break;
+            }
+          }
+          
+          if (nameWords.length > 0) {
+            return nameWords.join(' ');
+          }
+          
+          return `Business ${Math.floor(Math.random() * 10000)}`;
+        };
+        
+        // Last resort: If still no listings, try to extract businesses from page text directly
+        if (listings.length === 0) {
+          console.log('Last resort - extracting businesses directly from page text...');
+          const pageText = document.body.textContent || '';
+          const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+          const phoneMatches = pageText.match(phoneRegex);
+          
+          if (phoneMatches && phoneMatches.length > 0) {
+            console.log(`Found ${phoneMatches.length} phone numbers in page text, extracting businesses...`);
+            
+            // Extract business context around each phone number
+            const businessListings = [];
+            const uniquePhones = [...new Set(phoneMatches)];
+            
+            uniquePhones.slice(0, 100).forEach((phone, index) => {
+              const phoneIndex = pageText.indexOf(phone);
+              const contextStart = Math.max(0, phoneIndex - 300);
+              const contextEnd = Math.min(pageText.length, phoneIndex + phone.length + 300);
+              const context = pageText.substring(contextStart, contextEnd);
+              
+              // Create a business listing from the context
+              const businessDiv = document.createElement('div');
+              businessDiv.textContent = context;
+              businessDiv.setAttribute('data-extracted-from-text', 'true');
+              businessDiv.setAttribute('data-phone-number', phone);
+              businessDiv.setAttribute('data-business-index', index);
+              businessListings.push(businessDiv);
+            });
+            
+            listings = businessListings;
+            console.log(`Created ${listings.length} business listings from page text`);
+          } else {
+            console.log('No phone numbers found in page text - cannot extract businesses');
+            // Don't create placeholder entries - return empty array
+            listings = [];
+          }
+        }
+        
+        // Debug: Log page structure info
+        console.log(`=== PAGE STRUCTURE DEBUG ===`);
+        console.log(`Total elements found: ${listings.length}`);
+        console.log(`Page title: ${document.title}`);
+        console.log(`Page URL: ${window.location.href}`);
+        console.log(`Total divs on page: ${document.querySelectorAll('div').length}`);
+        console.log(`Total elements with phone numbers: ${document.querySelectorAll('*').length}`);
+        
+        // Enhanced debugging: Show page HTML structure
+        console.log(`=== ENHANCED PAGE STRUCTURE ANALYSIS ===`);
+        const body = document.body;
+        console.log(`Body tag: ${body.tagName}`);
+        console.log(`Body classes: ${body.className}`);
+        console.log(`Body HTML length: ${body.innerHTML.length}`);
+        
+        // Find all potential business containers
+        const allDivs = document.querySelectorAll('div');
+        const divsWithClasses = [];
+        const divsWithText = [];
+        
+        allDivs.forEach((div, index) => {
+          if (div.className && div.className.trim()) {
+            divsWithClasses.push({
+              index,
+              className: div.className,
+              textLength: div.textContent?.length || 0,
+              text: div.textContent?.substring(0, 100)
+            });
+          }
+          
+          const text = div.textContent || '';
+          if (text.length > 50 && text.length < 1000) {
+            divsWithText.push({
+              index,
+              className: div.className || 'no-class',
+              textLength: text.length,
+              text: text.substring(0, 200)
+            });
+          }
+        });
+        
+        console.log(`Found ${divsWithClasses.length} divs with classes:`);
+        divsWithClasses.slice(0, 10).forEach(item => {
+          console.log(`  Div ${item.index}: class="${item.className}", text=${item.textLength} chars`);
+        });
+        
+        console.log(`Found ${divsWithText.length} divs with substantial text:`);
+        divsWithText.slice(0, 5).forEach(item => {
+          console.log(`  Div ${item.index}: class="${item.className}", text="${item.text}..."`);
+        });
+        
+        // Check for phone numbers in the entire page
+        const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+        const pageText = body.textContent || '';
+        const phoneMatches = pageText.match(phoneRegex);
+        console.log(`Phone numbers found in page: ${phoneMatches ? phoneMatches.length : 0}`);
+        if (phoneMatches) {
+          console.log(`Phone numbers: ${phoneMatches.slice(0, 5).join(', ')}`);
+        }
+        
+        // Check for common JustDial patterns
+        const jdPatterns = [
+          'jsx-',
+          'result',
+          'listing',
+          'contact',
+          'phone',
+          'tel',
+          'call',
+          'business',
+          'company',
+          'store',
+          'service'
+        ];
+        
+        jdPatterns.forEach(pattern => {
+          const elements = document.querySelectorAll(`[class*="${pattern}"]`);
+          if (elements.length > 0) {
+            console.log(`Found ${elements.length} elements with "${pattern}" in class`);
+          }
+        });
+        
+        // Debug: Show first few listing structures
+        if (listings.length > 0) {
+          console.log(`=== FIRST LISTING STRUCTURE DEBUG ===`);
+          for (let i = 0; i < Math.min(3, listings.length); i++) {
+            const listing = listings[i];
+            console.log(`Listing ${i}: Tag=${listing.tagName}, Class=${listing.className}, Text length=${listing.textContent?.length || 0}`);
+            console.log(`Listing ${i} text preview: "${listing.textContent?.substring(0, 200)}..."`);
+          }
         }
         
         console.log('=== PROCESSING LISTINGS ===');
@@ -1896,6 +2541,127 @@ class JustdialScraper {
         for (const [index, listing] of listings.entries()) {
           try {
             console.log(`Processing listing ${index}:`, listing.tagName, listing.className);
+            
+            // Check if this is an artificial business entry
+            const isArtificial = listing.getAttribute('data-artificial-business') === 'true';
+            const isExtractedFromText = listing.getAttribute('data-extracted-from-text') === 'true';
+            
+            if (isExtractedFromText) {
+              console.log(`Processing business extracted from page text...`);
+              const phoneText = listing.textContent || '';
+              const storedPhone = listing.getAttribute('data-phone-number');
+              
+              // Use stored phone number
+              let actualPhone = storedPhone;
+              
+              if (actualPhone) {
+                // Format phone number
+                let cleanPhone = actualPhone.replace(/\D/g, '');
+                if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+                  cleanPhone = cleanPhone.substring(2);
+                } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+                  cleanPhone = cleanPhone.substring(1);
+                } else if (cleanPhone.length === 11 && cleanPhone.startsWith('91')) {
+                  cleanPhone = cleanPhone.substring(2);
+                }
+                
+                // Extract business name from context
+                let businessName = this.extractBusinessNameFromContext(phoneText, actualPhone);
+                
+                // Try to extract address from context
+                let address = 'Extracted from page text';
+                const addressPatterns = [
+                  /([A-Za-z0-9\s,.-]+(?:road|street|marg|nagar|colony|area|sector|phase|block|building|tower|shop|complex|plaza|market|bazaar))/gi,
+                  /([A-Za-z0-9\s,.-]+(?:near|opposite|behind|above|below|next to)\s+[A-Za-z0-9\s,.-]+)/gi,
+                  /(\d+\s*[A-Za-z0-9\s,.-]{10,100})/g
+                ];
+                
+                for (const pattern of addressPatterns) {
+                  const match = phoneText.match(pattern);
+                  if (match && match[1] && match[1].length > 10) {
+                    address = match[1].trim();
+                    break;
+                  }
+                }
+                
+                const business = {
+                  name: businessName,
+                  phone: cleanPhone,
+                  address: address,
+                  category: 'Extracted from text',
+                  city: 'Unknown',
+                  image: 'N/A'
+                };
+                
+                businesses.push(business);
+                console.log(`  -> Added business from text: "${businessName}" with phone ${cleanPhone}`);
+                continue;
+              }
+            }
+            
+            if (isArtificial) {
+              console.log(`Processing artificial business entry from phone number...`);
+              const phoneText = listing.textContent || '';
+              const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+              const phoneMatch = phoneText.match(phoneRegex);
+              const storedPhone = listing.getAttribute('data-phone-number');
+              
+              // Use stored phone number if available, otherwise extract from text
+              const actualPhone = storedPhone || (phoneMatch ? phoneMatch[0] : null);
+              
+              if (actualPhone) {
+                // Format phone number
+                let cleanPhone = actualPhone.replace(/\D/g, '');
+                if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+                  cleanPhone = cleanPhone.substring(2);
+                } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+                  cleanPhone = cleanPhone.substring(1);
+                } else if (cleanPhone.length === 11 && cleanPhone.startsWith('91')) {
+                  cleanPhone = cleanPhone.substring(2);
+                }
+                
+                // Extract business name and context from the artificial div
+                const parts = phoneText.split('|');
+                let businessName = parts[0] || `Business ${index + 1}`;
+                let context = parts[2] || '';
+                
+                // Clean up the business name
+                businessName = businessName.replace(/\d+/g, '').trim();
+                if (businessName.length < 3 || businessName.includes('Business')) {
+                  businessName = this.extractBusinessNameFromContext(context, actualPhone);
+                }
+                
+                // Try to extract address from context
+                let address = 'Extracted from phone number';
+                if (context) {
+                  const addressPatterns = [
+                    /(?:near|opposite|behind|above|below|next to)\s+([^,\n]+)/i,
+                    /([^,\n]+\s+(?:road|street|building|shop|complex|plaza|market))/i,
+                    /([^,\n]+\s+(?:floor|block|shop no|s\.no|plot))/i
+                  ];
+                  
+                  for (const pattern of addressPatterns) {
+                    const match = context.match(pattern);
+                    if (match && match[1] && match[1].length > 5) {
+                      address = match[1].trim();
+                      break;
+                    }
+                  }
+                }
+                
+                const business = {
+                  name: businessName,
+                  phone: cleanPhone.length === 10 && /^[6-9]\d{9}$/.test(cleanPhone) ? cleanPhone : actualPhone,
+                  address: address,
+                  category: window.detectedCategory || this.categorizeCompany(businessName),
+                  city: window.location.href.match(/\/([A-Za-z]+)\//)?.[1]?.charAt(0).toUpperCase() + window.location.href.match(/\/([A-Za-z]+)\//)?.[1]?.slice(1) || 'Unknown',
+                  image: 'N/A'
+                };
+                businesses.push(business);
+                console.log(`  -> Added artificial business: "${business.name}" with phone: "${business.phone}"`);
+              }
+              continue;
+            }
             
             const business = {
               name: '',
@@ -1925,7 +2691,7 @@ class JustdialScraper {
                 const text = element.textContent?.trim() || '';
                 const textLower = text.toLowerCase();
                 
-                // Enhanced validation for business names
+                // Simplified validation for business names - less restrictive
                 const isValidBusinessName = text.length > 2 && text.length < 150 && 
                     !/^\d+$/.test(text) && 
                     !textLower.includes('ad') &&
@@ -1933,83 +2699,15 @@ class JustdialScraper {
                     !textLower.includes('promotion') &&
                     !textLower.includes('advertisement') &&
                     !text.match(/^(call|contact|phone|mobile)$/i) &&
-                    // Additional filters for common UI text
-                    !textLower.includes('photos') &&
-                    !textLower.includes('get the list') &&
+                    // Only filter out most obvious UI text
                     !textLower.includes('skip to main content') &&
-                    !textLower.includes('main content') &&
                     !textLower.includes('navigation') &&
-                    !textLower.includes('search') &&
                     !textLower.includes('filter') &&
                     !textLower.includes('sort') &&
-                    !textLower.includes('category') &&
-                    !textLower.includes('location') &&
-                    !textLower.includes('direction') &&
-                    !textLower.includes('map') &&
-                    !textLower.includes('review') &&
-                    !textLower.includes('rating') &&
-                    !textLower.includes('contact') &&
-                    !textLower.includes('about') &&
-                    !textLower.includes('services') &&
-                    !textLower.includes('products') &&
-                    !textLower.includes('website') &&
-                    !textLower.includes('email') &&
-                    !textLower.includes('address') &&
-                    !textLower.includes('hours') &&
-                    !textLower.includes('timing') &&
-                    !textLower.includes('open') &&
-                    !textLower.includes('closed') &&
-                    !textLower.includes('book') &&
-                    !textLower.includes('appointment') &&
                     !textLower.includes('book appointment') &&
-                    !textLower.includes('enquiry') &&
-                    !textLower.includes('details') &&
-                    !textLower.includes('information') &&
-                    !textLower.includes('description') &&
-                    !textLower.includes('features') &&
-                    !textLower.includes('amenities') &&
-                    !textLower.includes('facilities') &&
-                    // Filter out comma-separated UI elements
-                    !(textLower.includes(',') && (
-                      textLower.includes('photos') ||
-                      textLower.includes('get the') ||
-                      textLower.includes('skip to') ||
-                      textLower.includes('main content') ||
-                      textLower.includes('list of') ||
-                      textLower.includes('content') ||
-                      textLower.includes('search') ||
-                      textLower.includes('filter') ||
-                      textLower.includes('sort') ||
-                      textLower.includes('category') ||
-                      textLower.includes('location') ||
-                      textLower.includes('direction') ||
-                      textLower.includes('map') ||
-                      textLower.includes('review') ||
-                      textLower.includes('rating') ||
-                      textLower.includes('contact') ||
-                      textLower.includes('about') ||
-                      textLower.includes('services') ||
-                      textLower.includes('products') ||
-                      textLower.includes('website') ||
-                      textLower.includes('email') ||
-                      textLower.includes('address') ||
-                      textLower.includes('hours') ||
-                      textLower.includes('timing') ||
-                      textLower.includes('open') ||
-                      textLower.includes('closed') ||
-                      textLower.includes('book') ||
-                      textLower.includes('appointment') ||
-                      textLower.includes('book appointment') ||
-                      textLower.includes('enquiry') ||
-                      textLower.includes('details') ||
-                      textLower.includes('information') ||
-                      textLower.includes('description') ||
-                      textLower.includes('features') ||
-                      textLower.includes('amenities') ||
-                      textLower.includes('facilities')
-                    )) &&
-                    // Filter out names that start with common UI words
-                    !textLower.match(/^(photos|get|skip|main|content|search|filter|sort|category|location|direction|map|review|rating|contact|about|services|products|website|email|address|hours|timing|open|closed|book|appointment|book appointment|enquiry|details|information|description|features|amenities|facilities)/);
+                    !textLower.includes('get the list') &&
+                    // Filter out names that start with obvious UI words
+                    !textLower.match(/^(photos|skip|navigation|filter|sort|book appointment)/);
                 
                 if (isValidBusinessName) {
                   business.name = text;
@@ -2033,15 +2731,15 @@ class JustdialScraper {
               '.call-info', '.contact-details', '.vendor-phone',
               
               // Enhanced Justdial-specific phone selectors (2024 patterns)
-              'div[class*="jsx-"] [class*="phone"]',
-              'div[class*="jsx-"] [class*="tel"]',
-              'div[class*="jsx-"] [class*="mobile"]',
-              'div[class*="jsx-"] a[href*="tel:"]',
-              'div[class*="jsx-"] [data-testid*="phone"]',
-              'div[class*="jsx-"] span[title*="Call"]',
-              'div[class*="jsx-"] div[title*="Call"]',
-              'div[class*="jsx-"] [data-testid*="contact"]',
-              'div[class*="jsx-"] [class*="contact"]',
+              'div[class*="jsx"] [class*="phone"]',
+              'div[class*="jsx"] [class*="tel"]',
+              'div[class*="jsx"] [class*="mobile"]',
+              'div[class*="jsx"] a[href*="tel:"]',
+              'div[class*="jsx"] [data-testid*="phone"]',
+              'div[class*="jsx"] span[title*="Call"]',
+              'div[class*="jsx"] div[title*="Call"]',
+              'div[class*="jsx"] [data-testid*="contact"]',
+              'div[class*="jsx"] [class*="contact"]',
               
               // New 2024 Justdial patterns
               'span[onclick*="tel:"]',
@@ -2067,6 +2765,13 @@ class JustdialScraper {
               '[aria-label*="Call"]', '[aria-label*="Phone"]', '[aria-label*="Mobile"]',
               'a[onclick*="tel:"]',
               'span[data-phone]', 'div[data-phone]',
+              
+              // More generic selectors
+              '[class*="call"]',
+              '[class*="contact"]',
+              '[class*="number"]',
+              'span[title*="call"]',
+              'div[title*="call"]',
               
               // Fallback: any element containing phone-like text
               '*'
@@ -2666,27 +3371,42 @@ class BulkJustdialScraper extends JustdialScraper {
         try {
           if (attempts > 1) {
             console.log('Waiting before bulk retry to prevent rate limiting...');
-            await new Promise(resolve => setTimeout(resolve, Math.random() * 15000 + 10000));
           }
           
-          // Navigate with different wait strategies
-          if (attempts === 1) {
-            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
-          } else if (attempts === 2) {
-            await this.page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
-          } else {
-            await this.page.goto(url, { waitUntil: 'load', timeout: 90000 });
-          }
+          console.log('Bulk scraping - Navigating to URL:', url);
+          await this.page.goto(url, { 
+            waitUntil: 'domcontentloaded', 
+            timeout: 90000 
+          });
           
-          // Wait for content to load
-          await new Promise(resolve => setTimeout(resolve, Math.random() * 8000 + 5000));
+          console.log('Bulk scraping - Navigation completed, waiting for content...');
+          await new Promise(resolve => setTimeout(resolve, 8000));
           
-          // Check for access denied
           const pageTitle = await this.page.title();
           const pageContent = await this.page.content();
           
           console.log('Bulk scraping - Page title:', pageTitle);
           console.log('Bulk scraping - Current URL:', this.page.url());
+          console.log('Bulk scraping - Page content length:', pageContent.length);
+          
+          // Enhanced debugging: Check if page has content
+          const bodyText = await this.page.evaluate(() => document.body.textContent || '');
+          console.log('Bulk scraping - Body text length:', bodyText.length);
+          console.log('Bulk scraping - Body text preview:', bodyText.substring(0, 500));
+          
+          // Check for common JustDial elements
+          const justdialElements = await this.page.evaluate(() => {
+            const elements = {
+              totalDivs: document.querySelectorAll('div').length,
+              jsxElements: document.querySelectorAll('[class*="jsx"]').length,
+              phoneElements: document.querySelectorAll('[class*="phone"], [class*="tel"], [class*="mobile"]').length,
+              resultElements: document.querySelectorAll('[class*="result"], [class*="listing"]').length,
+              businessElements: document.querySelectorAll('[class*="business"], [class*="company"], [class*="store"]').length
+            };
+            return elements;
+          });
+          
+          console.log('Bulk scraping - Page element counts:', justdialElements);
           
           accessDenied = 
             pageTitle.includes('Access Denied') ||
@@ -3483,7 +4203,13 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             // Extract and validate required fields
             const companyName = row['Company Name'] || row.Title1 || row.company || row.Company || row.title || '';
             const phone = row['Phone Number'] || row.phone || row.Phone || '';
-            const email = row['Email'] || row.email || row.Email || '';
+            let email = row['Email'] || row.email || row.Email || '';
+            
+            // Apply email correction to handle complex formats
+            if (email && email.trim()) {
+                const correctedEmail = correctEmail(email);
+                email = correctedEmail || email; // Use corrected email if available, otherwise original
+            }
             
             // Extract address - check for rllt_detail1 first, then other address columns
             let address = '';
@@ -4756,6 +5482,77 @@ app.post('/api/justdial-bulk-scrape', async (req, res) => {
   }
 });
 
+// Bulk Scrape Justdial URL for 250-350 businesses (alias endpoint)
+app.post('/api/bulk-scrape', async (req, res) => {
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  // Validate Justdial URL
+  if (!url.includes('justdial.com')) {
+    return res.status(400).json({ error: 'Invalid Justdial URL' });
+  }
+  
+  // Set up Server-Sent Events for progress tracking
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+  
+  const progressCallback = (progress) => {
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  };
+  
+  try {
+    const bulkScraper = new BulkJustdialScraper();
+    bulkScraper.setProgressCallback(progressCallback);
+    
+    // Send initial progress
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'starting'
+    });
+    
+    const data = await bulkScraper.scrapeBulkBusinessData(url);
+    
+    // Send final progress
+    progressCallback({
+      current: data.length,
+      target: 250,
+      percentage: 100,
+      page: 0,
+      status: 'completed',
+      finalData: data
+    });
+    
+    // Close the connection
+    res.write(`data: ${JSON.stringify({ success: true, data: data, count: data.length, finished: true })}\n\n`);
+    res.end();
+    
+  } catch (error) {
+    console.error('Bulk scraping error:', error);
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'error',
+      error: error.message
+    });
+    
+    res.write(`data: ${JSON.stringify({ success: false, error: error.message, finished: true })}\n\n`);
+    res.end();
+  }
+});
+
 // Export Justdial data to Excel
 app.post('/api/export/excel', async (req, res) => {
   const { data } = req.body;
@@ -5828,6 +6625,11 @@ app.post('/api/download/google-maps-history', async (req, res) => {
     console.error('Download history error:', error);
     res.status(500).json({ error: 'Failed to download history data' });
   }
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'Server is running' });
 });
 
 // Run cleanup every hour

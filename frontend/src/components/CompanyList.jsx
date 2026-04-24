@@ -118,6 +118,124 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
     const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
     return emailRegex.test(email.trim());
   };
+
+  // Enhanced email extraction function
+  const extractValidEmails = (text) => {
+    if (!text || typeof text !== 'string') return [];
+    
+    const emails = [];
+    
+    // Pattern 1: Standard email regex
+    const standardEmailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
+    const standardMatches = text.match(standardEmailRegex) || [];
+    emails.push(...standardMatches);
+    
+    // Pattern 2: Handle concatenated emails like "thedentalcureg@gmail.comthedentalcureg"
+    const concatenatedRegex = /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+    const concatenatedMatches = text.match(concatenatedRegex) || [];
+    emails.push(...concatenatedMatches);
+    
+    // Pattern 3: Handle UUID-style emails (sentry/wixpress style)
+    const uuidRegex = /\b[a-f0-9]{32}@(?:sentry(?:-next)?\.wixpress\.com|sentry\.io)\b/g;
+    const uuidMatches = text.match(uuidRegex) || [];
+    emails.push(...uuidMatches);
+    
+    // Pattern 4: Handle emails with domain duplication like "gmail.comthedentalcureg@gmail.com"
+    const domainDuplicationRegex = /(?:[a-z]+\.(?:com|net|org|co|in))?([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+    const domainDuplicationMatches = text.match(domainDuplicationRegex) || [];
+    emails.push(...domainDuplicationMatches);
+    
+    // Remove duplicates and filter valid emails
+    const uniqueEmails = [...new Set(emails)];
+    return uniqueEmails.filter(email => isValidEmail(email));
+  };
+
+  // Enhanced email correction function
+  const correctEmail = (email) => {
+    if (!email || typeof email !== 'string') return null;
+    
+    // First try to extract valid emails from the text
+    const extractedEmails = extractValidEmails(email);
+    if (extractedEmails.length > 0) {
+      return extractedEmails[0]; // Return the first valid email found
+    }
+    
+    let corrected = email.trim().toLowerCase();
+    
+    // Remove common separators and spaces
+    corrected = corrected.replace(/[\s_\-]+/g, '');
+    
+    // Remove phone numbers and other non-email text
+    corrected = corrected.replace(/\d{3,}[-\s]?\d{3,}[-\s]?\d{4,}/g, '');
+    corrected = corrected.replace(/phone|call|book|schedule|homeabout|info|enquiries/g, '');
+    
+    // Remove extra @ symbols if multiple exist
+    const atCount = (corrected.match(/@/g) || []).length;
+    if (atCount > 1) {
+      // Keep only the last @ symbol
+      const parts = corrected.split('@');
+      const localPart = parts.slice(0, -1).join('');
+      const domain = parts[parts.length - 1];
+      corrected = localPart + '@' + domain;
+    }
+    
+    // Fix common domain mistakes
+    const domainFixes = {
+      'gmial.com': 'gmail.com',
+      'gamil.com': 'gmail.com',
+      'gmail.co': 'gmail.com',
+      'yahoo.co': 'yahoo.com',
+      'yahho.com': 'yahoo.com',
+      'hotmial.com': 'hotmail.com',
+      'outlok.com': 'outlook.com',
+      'rediffmail.co': 'rediffmail.com'
+    };
+    
+    Object.entries(domainFixes).forEach(([wrong, correct]) => {
+      if (corrected.endsWith(wrong)) {
+        corrected = corrected.replace(wrong, correct);
+      }
+    });
+    
+    // Validate the corrected email
+    if (isValidEmail(corrected)) {
+      return corrected;
+    }
+    
+    return null;
+  };
+
+  // Test function for email extraction (can be removed in production)
+  const testEmailExtraction = () => {
+    const testCases = [
+      '605a7baede844d278b89dc95ae0a9123@sentry-next.wixpress.com',
+      'dd0a55ccb8124b9c9d938e3acf41f8aa@sentry.wixpress.com',
+      'c183baa23371454f99f417f6616b724d@sentry.wixpress.com',
+      'thedentalcureg@gmail.comthedentalcureg',
+      'gmail.comthedentalcureg@gmail.com',
+      'ismilegurgaon@gmail.comhomeabout',
+      'ismilegurgaon@gmail.comschedule,0124-4326628thedentalhomeggn@gmail.comc',
+      '122002enquiriesthedentalhomeggn@gmail.comcall',
+      '0124-4326628thedentalhomeggn@gmail.comcall,info@thegentledentalclinic.cominfo',
+      'drsahilmaghu@gmail.comdrsahilmaghu',
+      'gmail.comdrsahilmaghu@gmail.comdrsahilmaghu,himanshu.a178@gmail.comhimanshu',
+      '.a178@gmail.com,98102-44656drbhutani@yahoo.com,garima_clinic@yahoo.inbook',
+      'garima_clinic@yahoo.inphone'
+    ];
+
+    testCases.forEach((testCase, index) => {
+      const extracted = extractValidEmails(testCase);
+      const corrected = correctEmail(testCase);
+      console.log(`Test ${index + 1}: "${testCase}"`);
+      console.log(`  Extracted: ${extracted.length > 0 ? extracted[0] : 'None'}`);
+      console.log(`  Corrected: ${corrected || 'None'}`);
+      console.log('---');
+    });
+  };
+
+  // Uncomment to test in browser console
+  // testEmailExtraction();
+
   const getStatusBadge = (status) => {
     const statusConfig = {
       pending: {
@@ -305,19 +423,31 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                       <span className="text-gray-400 italic">No Phone</span>
                     </div>
                   )}
-                  {company.email && company.email.trim() !== '' ? (
-                    <div className="flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
-                      <span className="text-blue-600">
-                        {company.email.split(',')[0].trim()}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1">
-                      <Mail className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="text-gray-400 italic">No Email</span>
-                    </div>
-                  )}
+                  {(() => {
+                    const email = company.email ? company.email.split(',')[0].trim() : '';
+                    const correctedEmail = email ? correctEmail(email) : null;
+                    const isValid = email && isValidEmail(email);
+                    const displayEmail = isValid ? email : correctedEmail;
+                    
+                    return displayEmail ? (
+                      <div className="flex items-center gap-1">
+                        <Mail className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
+                        <span className="text-blue-600">
+                          {displayEmail}
+                        </span>
+                        {!isValid && correctedEmail && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-green-100 text-green-700 font-medium">
+                            ✓ Fixed
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <Mail className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-gray-400 italic">No Email</span>
+                      </div>
+                    );
+                  })()}
                   {company.website && company.website.trim() !== '' ? (
                     <div className="flex items-start gap-1">
                       <Globe className="w-3.5 h-3.5 text-purple-500 flex-shrink-0 mt-0.5" />
