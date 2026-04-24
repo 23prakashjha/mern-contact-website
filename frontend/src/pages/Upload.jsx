@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import * as XLSX from 'xlsx';
-import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, AlertCircle, Loader2, Globe, Upload as UploadIcon, FileSpreadsheet, History, X, Calendar, Clock, File, ChevronLeft, ChevronRight, Search, Database } from 'lucide-react';
+import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, AlertCircle, Loader2, Globe, Upload as UploadIcon, FileSpreadsheet, History, X, Calendar, Clock, File, ChevronLeft, ChevronRight, Search, Database, Tag, Building, Users, Briefcase, MapPin, Star } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
 const Upload = () => {
@@ -21,6 +21,7 @@ const Upload = () => {
   const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [historyCurrentPage, setHistoryCurrentPage] = useState(1);
   const [historyItemsPerPage] = useState(10);
+  const [detectedCategories, setDetectedCategories] = useState([]);
 
   const API_BASE_URL = 'http://localhost:5000/api';
 
@@ -76,6 +77,196 @@ const Upload = () => {
   const formatDate = (dateString) => {
     if (!dateString) return 'N/A';
     return new Date(dateString).toLocaleString();
+  };
+
+  // Download file function
+  const downloadFile = async (filename, originalFilename) => {
+    try {
+      console.log('Downloading file:', filename);
+      
+      // Show loading toast
+      const toastId = toast.loading('Downloading file...');
+      
+      // Determine the correct download endpoint based on file type
+      let downloadUrl;
+      if (filename.includes('processed-') || filename.includes('google-maps-data')) {
+        // Excel Scraper processed files
+        downloadUrl = `http://localhost:5000/api/excel-scraper/download/${filename}`;
+      } else {
+        // Regular uploaded files
+        downloadUrl = `http://localhost:5000/api/upload/download/${filename}`;
+      }
+      
+      const response = await axios.get(downloadUrl, {
+        responseType: 'blob',
+      });
+      
+      // Create a blob from the response data
+      const blob = new Blob([response.data]);
+      
+      // Create a temporary URL for the blob
+      const url = window.URL.createObjectURL(blob);
+      
+      // Create a temporary anchor element and trigger download
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = originalFilename || filename;
+      document.body.appendChild(link);
+      link.click();
+      
+      // Clean up
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      // Show success toast
+      toast.success('File downloaded successfully!', { id: toastId });
+      
+    } catch (error) {
+      console.error('Download error:', error);
+      
+      // Show appropriate error message
+      let errorMessage = 'Failed to download file';
+      if (error.response?.status === 404) {
+        errorMessage = 'File not found or has been deleted';
+      } else if (error.response?.status === 500) {
+        errorMessage = 'Server error during download';
+      }
+      
+      toast.error(errorMessage);
+    }
+  };
+
+  // Category detection logic
+  const detectCategories = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetNames = workbook.SheetNames;
+          const categories = new Set();
+          
+          sheetNames.forEach(sheetName => {
+            const worksheet = workbook.Sheets[sheetName];
+            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            
+            // Analyze column headers and data patterns
+            const headers = Object.keys(jsonData[0] || {});
+            const categoryPatterns = {
+              'Technology': ['software', 'tech', 'it', 'computer', 'programming', 'development', 'app', 'web', 'digital', 'system', 'network', 'data', 'cloud', 'cyber', 'security', 'ai', 'ml', 'automation'],
+              'Healthcare': ['medical', 'health', 'hospital', 'clinic', 'pharmacy', 'doctor', 'nurse', 'patient', 'treatment', 'medicine', 'pharmaceutical', 'biotech', 'healthcare'],
+              'Finance': ['bank', 'financial', 'finance', 'investment', 'insurance', 'credit', 'loan', 'money', 'account', 'payment', 'transaction', 'wealth', 'fund', 'capital'],
+              'Retail': ['shop', 'store', 'retail', 'sale', 'product', 'goods', 'merchandise', 'ecommerce', 'commerce', 'market', 'shopping', 'consumer'],
+              'Education': ['school', 'education', 'university', 'college', 'academic', 'student', 'teacher', 'training', 'course', 'learning', 'tuition', 'educational'],
+              'Manufacturing': ['manufacture', 'production', 'factory', 'industrial', 'machinery', 'equipment', 'fabrication', 'assembly', 'processing', 'plant'],
+              'Real Estate': ['property', 'real estate', 'housing', 'building', 'construction', 'architecture', 'land', 'rental', 'lease', 'development'],
+              'Hospitality': ['hotel', 'restaurant', 'food', 'beverage', 'tourism', 'travel', 'hospitality', 'catering', 'accommodation', 'entertainment'],
+              'Transportation': ['transport', 'logistics', 'shipping', 'delivery', 'freight', 'warehouse', 'distribution', 'fleet', 'vehicle', 'cargo'],
+              'Consulting': ['consulting', 'consultant', 'advisory', 'service', 'solution', 'professional', 'expert', 'strategy', 'management'],
+              'Marketing': ['marketing', 'advertising', 'promotion', 'brand', 'media', 'campaign', 'creative', 'agency', 'communication'],
+              'Legal': ['legal', 'law', 'attorney', 'lawyer', 'court', 'justice', 'regulation', 'compliance', 'contract', 'firm'],
+              'Government': ['government', 'public', 'municipal', 'state', 'federal', 'administration', 'official', 'department', 'agency'],
+              'Agriculture': ['farm', 'agriculture', 'crop', 'livestock', 'food production', 'rural', 'farming', 'harvest', 'agricultural'],
+              'Energy': ['energy', 'power', 'electricity', 'oil', 'gas', 'renewable', 'solar', 'wind', 'nuclear', 'utility'],
+              'Telecommunications': ['telecom', 'communication', 'network', 'wireless', 'mobile', 'phone', 'internet', 'broadband', 'satellite'],
+              'General Business': ['business', 'company', 'corporation', 'enterprise', 'organization', 'firm', 'llc', 'inc', 'ltd']
+            };
+            
+            // Check sheet name first
+            const sheetNameLower = sheetName.toLowerCase();
+            Object.entries(categoryPatterns).forEach(([category, keywords]) => {
+              if (keywords.some(keyword => sheetNameLower.includes(keyword))) {
+                categories.add(category);
+              }
+            });
+            
+            // Check headers and sample data
+            headers.forEach(header => {
+              const headerLower = header.toLowerCase();
+              Object.entries(categoryPatterns).forEach(([category, keywords]) => {
+                if (keywords.some(keyword => headerLower.includes(keyword))) {
+                  categories.add(category);
+                }
+              });
+            });
+            
+            // Check sample data (first 10 rows)
+            jsonData.slice(0, 10).forEach(row => {
+              Object.values(row).forEach(value => {
+                if (value && typeof value === 'string') {
+                  const valueLower = value.toLowerCase();
+                  Object.entries(categoryPatterns).forEach(([category, keywords]) => {
+                    if (keywords.some(keyword => valueLower.includes(keyword))) {
+                      categories.add(category);
+                    }
+                  });
+                }
+              });
+            });
+          });
+          
+          // If no specific categories found, default to General Business
+          if (categories.size === 0) {
+            categories.add('General Business');
+          }
+          
+          resolve(Array.from(categories));
+        } catch (error) {
+          console.error('Error detecting categories:', error);
+          resolve(['General Business']);
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  };
+
+  // Get category icon
+  const getCategoryIcon = (category) => {
+    const iconMap = {
+      'Technology': <Database className="w-4 h-4" />,
+      'Healthcare': <Users className="w-4 h-4" />,
+      'Finance': <FileText className="w-4 h-4" />,
+      'Retail': <Building className="w-4 h-4" />,
+      'Education': <FileText className="w-4 h-4" />,
+      'Manufacturing': <Building className="w-4 h-4" />,
+      'Real Estate': <Building className="w-4 h-4" />,
+      'Hospitality': <Star className="w-4 h-4" />,
+      'Transportation': <MapPin className="w-4 h-4" />,
+      'Consulting': <Briefcase className="w-4 h-4" />,
+      'Marketing': <Star className="w-4 h-4" />,
+      'Legal': <FileText className="w-4 h-4" />,
+      'Government': <Building className="w-4 h-4" />,
+      'Agriculture': <MapPin className="w-4 h-4" />,
+      'Energy': <Database className="w-4 h-4" />,
+      'Telecommunications': <Phone className="w-4 h-4" />,
+      'General Business': <Briefcase className="w-4 h-4" />
+    };
+    return iconMap[category] || <Tag className="w-4 h-4" />;
+  };
+
+  // Get category color
+  const getCategoryColor = (category) => {
+    const colorMap = {
+      'Technology': 'blue',
+      'Healthcare': 'green',
+      'Finance': 'purple',
+      'Retail': 'orange',
+      'Education': 'indigo',
+      'Manufacturing': 'gray',
+      'Real Estate': 'teal',
+      'Hospitality': 'pink',
+      'Transportation': 'red',
+      'Consulting': 'yellow',
+      'Marketing': 'purple',
+      'Legal': 'blue',
+      'Government': 'gray',
+      'Agriculture': 'green',
+      'Energy': 'orange',
+      'Telecommunications': 'blue',
+      'General Business': 'gray'
+    };
+    return colorMap[category] || 'gray';
   };
 
   // Helper function to truncate long text and handle | character
@@ -160,6 +351,11 @@ const Upload = () => {
         return;
       }
       
+      // Detect categories before upload
+      const categories = await detectCategories(file);
+      setDetectedCategories(categories);
+      console.log('Detected categories:', categories);
+      
       setSelectedFile(file);
       setDataError('');
       
@@ -182,6 +378,7 @@ const Upload = () => {
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('categories', JSON.stringify(detectedCategories));
 
     try {
       // Upload progress simulation
@@ -288,6 +485,11 @@ const Upload = () => {
         return;
       }
       
+      // Detect categories before upload
+      const categories = await detectCategories(file);
+      setDetectedCategories(categories);
+      console.log('Detected categories:', categories);
+      
       setSelectedFile(file);
       setDataError('');
       
@@ -335,16 +537,7 @@ const Upload = () => {
       // Set the state first
       setProcessedData(allData);
       
-      // Wait a moment for state to update, then trigger upload
-      setTimeout(async () => {
-        console.log('Triggering automatic upload after state update...');
-        try {
-          const uploadedCount = await uploadProcessedDataToCompanies();
-          console.log('Auto-upload completed:', uploadedCount, 'companies uploaded');
-        } catch (error) {
-          console.log('Auto-upload failed:', error);
-        }
-      }, 100);
+      // NOTE: Removed automatic upload - only upload when user explicitly triggers it
       
     } catch (err) {
       console.error('Failed to fetch processed data:', err);
@@ -461,7 +654,7 @@ const Upload = () => {
     }
   };
 
-  // Automatic data processing function
+  // Automatic data processing function (NO AUTO-UPLOAD)
   const startAutoProcessing = async () => {
     setAutoProcessing(true);
     setProcessingStatus('Starting automatic data processing...');
@@ -473,13 +666,9 @@ const Upload = () => {
         fetchRecentProcessedData()
       ]);
       
-      // Auto-upload processed data to companies database
-      if (processedData) {
-        setProcessingStatus('Uploading processed data to companies database...');
-        await uploadProcessedDataToCompanies();
-      }
+      // NOTE: Removed automatic upload - data is only uploaded when user explicitly triggers it
       
-      setProcessingStatus('Data processing and upload complete!');
+      setProcessingStatus('Data refresh complete!');
       setTimeout(() => {
         setAutoProcessing(false);
         setProcessingStatus('');
@@ -495,7 +684,7 @@ const Upload = () => {
     }
   };
 
-  // Upload processed data to companies database
+  // Upload processed data to companies database (MANUAL TRIGGER ONLY)
   const uploadProcessedDataToCompanies = async () => {
     console.log('uploadProcessedDataToCompanies called');
     console.log('Processed data:', processedData);
@@ -534,8 +723,9 @@ const Upload = () => {
     }
     
     try {
-      console.log('Processing ALL', processedCompanies.length, 'companies for upload (NO SKIPPING)...');
+      console.log('Processing companies for upload with duplicate checking...');
       let uploadedCount = 0;
+      let skippedCount = 0;
       
       for (const company of processedCompanies) {
         console.log('Processing company:', JSON.stringify(company, null, 2));
@@ -619,12 +809,18 @@ const Upload = () => {
         
         console.log('Extracted data:', { companyName, phoneNumber, emailAddress, websiteUrl, address });
         
+        // Skip if missing essential data
+        if (!companyName || !phoneNumber || companyName.trim() === '' || phoneNumber.trim() === '') {
+          console.log('Skipping company due to missing essential data:', companyName);
+          skippedCount++;
+          continue;
+        }
+        
         // Apply line breaks to long text fields
         const processedCompanyName = addLineBreaks(String(companyName || ''), 20);
         const processedEmailAddress = addLineBreaks(String(emailAddress || ''), 20);
         const processedWebsiteUrl = addLineBreaks(String(websiteUrl || ''), 20);
         
-        // NO SKIPPING - Upload ALL companies regardless of missing data
         const companyData = {
           company: processedCompanyName,
           phone: phoneNumber,
@@ -650,32 +846,21 @@ const Upload = () => {
             // Add small delay between uploads to prevent rate limiting
             await new Promise(resolve => setTimeout(resolve, 200));
           } catch (error) {
-            // If it's a duplicate (409), try to update existing company instead
+            // If it's a duplicate (409), skip it
             if (error.response?.status === 409) {
-              console.log('Company already exists, updating instead:', companyName);
-              try {
-                // Try to find and update existing company
-                await makeApiCall(async () => {
-                  return await axios.put(`${API_BASE_URL}/companies/${companyName}`, companyData);
-                }, 2, 500);
-                
-                await axios.put(`${API_BASE_URL}/companies/${companyName}`, companyData);
-                uploadedCount++;
-                console.log('Successfully updated company:', companyName);
-              } catch (updateError) {
-                console.log('Company update also failed:', companyName, updateError.response?.data?.error || updateError.message);
-              }
+              console.log('⚠️ Company already exists, skipping:', companyName);
+              skippedCount++;
             } else {
-              console.log('Company upload failed:', companyName, postError.response?.data?.error || postError.message);
+              console.log('❌ Company upload failed:', companyName, error.response?.data?.error || error.message);
             }
           }
         } catch (error) {
-          console.log('Company processing failed:', companyName, error.response?.data?.error || error.message);
+          console.log('❌ Company processing failed:', companyName, error.response?.data?.error || error.message);
           // Continue uploading other companies even if one fails
         }
       }
       
-      console.log(`Successfully uploaded ${uploadedCount} out of ${processedCompanies.length} companies to database`);
+      console.log(`Upload summary: ${uploadedCount} uploaded, ${skippedCount} skipped (duplicates/invalid) out of ${processedCompanies.length} total companies`);
       
       // Force refresh companies data after upload
       console.log('Refreshing companies data after upload...');
@@ -712,38 +897,6 @@ const Upload = () => {
               <History className="w-4 h-4 mr-2" />
               View History
             </button>
-          </div>
-          
-          {/* Recent Uploads Summary */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200">
-              <div className="flex items-center space-x-2 mb-2">
-                <FileSpreadsheet className="w-5 h-5 text-blue-600" />
-                <span className="text-sm font-medium text-blue-900">Total Uploads</span>
-              </div>
-              <p className="text-2xl font-bold text-blue-600">{uploadHistory.length}</p>
-              <p className="text-xs text-blue-700 mt-1">Files uploaded</p>
-            </div>
-            
-            <div className="bg-gradient-to-r from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
-              <div className="flex items-center space-x-2 mb-2">
-                <Database className="w-5 h-5 text-green-600" />
-                <span className="text-sm font-medium text-green-900">Companies</span>
-              </div>
-              <p className="text-2xl font-bold text-green-600">{companies.length}</p>
-              <p className="text-xs text-green-700 mt-1">In database</p>
-            </div>
-            
-            <div className="bg-gradient-to-r from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
-              <div className="flex items-center space-x-2 mb-2">
-                <Clock className="w-5 h-5 text-purple-600" />
-                <span className="text-sm font-medium text-purple-900">Last Upload</span>
-              </div>
-              <p className="text-lg font-bold text-purple-600">
-                {uploadHistory.length > 0 ? formatDate(uploadHistory[0].uploadDate) : 'No uploads yet'}
-              </p>
-              <p className="text-xs text-purple-700 mt-1">Most recent activity</p>
-            </div>
           </div>
         </div>
 
@@ -975,6 +1128,23 @@ const Upload = () => {
                                   <span>Type: {item.mimetype}</span>
                                 </div>
                               )}
+                              {item.categories && item.categories.length > 0 && (
+                                <div className="flex items-center space-x-2 col-span-full">
+                                  <Tag className="w-4 h-4 text-purple-600" />
+                                  <span className="font-medium text-purple-700">Categories:</span>
+                                  <div className="flex flex-wrap gap-1">
+                                    {item.categories.map((category, catIndex) => (
+                                      <span
+                                        key={catIndex}
+                                        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-${getCategoryColor(category)}-100 text-${getCategoryColor(category)}-800`}
+                                      >
+                                        {getCategoryIcon(category)}
+                                        <span className="ml-1">{category}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                               {item.errorMessage && (
                                 <div className="flex items-center space-x-2 text-red-600 col-span-full">
                                   <AlertCircle className="w-4 h-4" />
@@ -982,6 +1152,17 @@ const Upload = () => {
                                 </div>
                               )}
                             </div>
+                          </div>
+                          {/* Download Button */}
+                          <div className="ml-4">
+                            <button
+                              onClick={() => downloadFile(item.filename || item.processedFilename, item.originalFilename)}
+                              className="flex items-center px-3 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition-colors shadow-sm hover:shadow-md"
+                              title={`Download ${item.originalFilename || 'file'}`}
+                            >
+                              <Download className="w-4 h-4 mr-1" />
+                              Download
+                            </button>
                           </div>
                         </div>
                       </div>

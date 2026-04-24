@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import axios from 'axios'
 import toast, { Toaster } from 'react-hot-toast'
-import { History, Trash2, Calendar, Eye } from 'lucide-react'
+import { History, Trash2, Calendar, Eye, FileSpreadsheet, Download } from 'lucide-react'
 
 function GoogleMapsScraper() {
   const [url, setUrl] = useState('')
@@ -174,6 +174,29 @@ function GoogleMapsScraper() {
     } catch (error) {
       console.error('Download history error:', error);
       toast.error('Failed to download history');
+    }
+  }
+
+  // Handle download individual history entry
+  const handleDownloadHistoryEntry = async (historyEntry) => {
+    try {
+      const response = await axios.post('/api/google-maps-download', { data: historyEntry.data }, {
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' 
+      });
+      const link = document.createElement('a');
+      link.href = window.URL.createObjectURL(blob);
+      const date = new Date(historyEntry.scrapeDate).toISOString().split('T')[0];
+      link.download = `google-maps-${date}-${historyEntry.businessCount}-businesses.xlsx`;
+      link.click();
+      
+      toast.success('History entry downloaded successfully!');
+    } catch (error) {
+      console.error('Download history entry error:', error);
+      toast.error('Failed to download history entry');
     }
   }
 
@@ -484,6 +507,13 @@ function GoogleMapsScraper() {
                           >
                             <Eye className="w-4 h-4 mr-1" />
                             Load
+                          </button>
+                          <button
+                            onClick={() => handleDownloadHistoryEntry(entry)}
+                            className="px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 transition-colors flex items-center"
+                          >
+                            <Download className="w-4 h-4 mr-1" />
+                            Download
                           </button>
                           <button
                             onClick={() => handleDeleteHistory(entry._id)}

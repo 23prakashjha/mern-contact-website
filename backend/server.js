@@ -123,6 +123,21 @@ const uploadHistorySchema = new mongoose.Schema({
 
 const UploadHistory = mongoose.model('UploadHistory', uploadHistorySchema);
 
+// Regular File Upload History Schema
+const fileUploadHistorySchema = new mongoose.Schema({
+    originalFilename: { type: String, required: true },
+    filename: { type: String, required: true },
+    uploadDate: { type: Date, default: Date.now },
+    size: Number,
+    mimetype: String,
+    recordCount: Number,
+    status: { type: String, enum: ['completed', 'processing', 'failed'], default: 'completed' },
+    categories: [String],
+    errorMessage: String
+});
+
+const FileUploadHistory = mongoose.model('FileUploadHistory', fileUploadHistorySchema);
+
 // JustDial Scraper History Schema
 const justdialHistorySchema = new mongoose.Schema({
     url: String,
@@ -3545,7 +3560,34 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
 
         try {
             await Company.insertMany(companies);
-// ... (rest of the code remains the same)
+            
+            // Save upload history
+            try {
+                let categories = [];
+                if (req.body.categories) {
+                    try {
+                        categories = JSON.parse(req.body.categories);
+                    } catch (e) {
+                        console.log('Could not parse categories from request');
+                    }
+                }
+                
+                const uploadRecord = new FileUploadHistory({
+                    originalFilename: req.file.originalname,
+                    filename: req.file.filename,
+                    size: req.file.size,
+                    mimetype: req.file.mimetype,
+                    recordCount: companies.length,
+                    status: 'completed',
+                    categories: categories
+                });
+                
+                await uploadRecord.save();
+                console.log('Upload history saved:', uploadRecord.originalFilename);
+            } catch (historyError) {
+                console.error('Error saving upload history:', historyError);
+                // Continue even if history saving fails
+            }
         } catch (dbError) {
             console.error('Database insertion error:', dbError);
             return res.status(400).json({ 
@@ -4357,6 +4399,53 @@ app.delete('/api/excel-scraper/history', async (req, res) => {
     } catch (error) {
         console.error('Clear history error:', error);
         res.status(500).json({ error: 'Error clearing history' });
+    }
+});
+
+// Regular Upload history endpoint
+app.get('/api/upload/history', async (req, res) => {
+    try {
+        const history = await FileUploadHistory.find().sort({ uploadDate: -1 }).limit(50);
+        res.json(history);
+    } catch (error) {
+        console.error('Upload history error:', error);
+        res.status(500).json({ error: 'Error fetching upload history' });
+    }
+});
+
+// Regular file download endpoint
+app.get('/api/upload/download/:filename', (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const filePath = path.join(__dirname, 'uploads', filename);
+
+        console.log('Download request for uploaded file:', filename);
+        console.log('File path:', filePath);
+
+        if (!require('fs').existsSync(filePath)) {
+            console.log('File not found:', filePath);
+            return res.status(404).json({ 
+                error: 'File not found',
+                message: 'The uploaded file has been deleted or expired'
+            });
+        }
+
+        console.log('File exists, serving download...');
+        res.download(filePath, filename, (err) => {
+            if (err) {
+                console.error('Download error:', err);
+                if (!res.headersSent) {
+                    res.status(500).json({ error: 'Error downloading file' });
+                }
+            } else {
+                console.log('File downloaded successfully');
+            }
+        });
+    } catch (error) {
+        console.error('Download error:', error);
+        if (!res.headersSent) {
+            res.status(500).json({ error: 'Error downloading file' });
+        }
     }
 });
 
