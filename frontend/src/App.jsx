@@ -9,7 +9,6 @@ import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import ExcelScraper from './pages/ExcelScraper';
 import GoogleMapsScraper from './pages/GoogleMapsScraper';
-import JustdialScraper from './pages/JustdialScraper';
 import Categories from './pages/Categories';
 
 function AppContent() {
@@ -33,7 +32,6 @@ function AppContent() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/excel-scraper" element={<ExcelScraper />} />
         <Route path="/google-maps-scraper" element={<GoogleMapsScraper />} />
-        <Route path="/justdial-scraper" element={<JustdialScraper />} />
         <Route path="/categories" element={<Categories />} />
       </Routes>
     </Layout>
