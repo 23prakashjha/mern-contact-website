@@ -98,32 +98,51 @@ app.use(cors({
     credentials: true
 }));
 
-// Rate limiting for Excel Scraper endpoints
-const limiter = rateLimit({
+// Rate limiting for Excel Scraper endpoints (more restrictive)
+const excelScraperLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // limit each IP to 100 requests per windowMs
-    message: 'Too many requests from this IP, please try again later.'
+    max: 80, // limit each IP to 80 requests per windowMs
+    message: { error: 'Too many Excel Scraper requests, please try again later.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: false,
+    skipFailedRequests: false
 });
-app.use('/api/excel-scraper/', limiter);
+app.use('/api/excel-scraper/', excelScraperLimiter);
 
-// Add request delay middleware to prevent rapid requests
-app.use('/api/scrape', (req, res, next) => {
-  // Add random delay to prevent rate limiting
-  const delay = Math.random() * 2000 + 1000; // 1-3 seconds random delay
-  setTimeout(next, delay);
-});
-
-// Rate limiting - more restrictive to prevent IP blocking
-const scrapingLimiter = rateLimit({
+// Rate limiting for general API endpoints (more lenient for frontend operations)
+const generalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each IP to 50 requests per windowMs (increased from 3)
-  message: 'Too many requests from this IP, please try again later.',
+  max: 200, // Increased from 50 to 200 requests per windowMs
+  message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: false,
   skipFailedRequests: false
 });
-app.use('/api/', scrapingLimiter);
+app.use('/api/', generalApiLimiter);
+
+// Add more restrictive rate limiting for expensive operations
+const expensiveOperationsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 30, // Lower limit for expensive operations
+  message: { error: 'Too many expensive operations, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skipFailedRequests: false
+});
+
+// Apply expensive operations limiter to specific endpoints
+app.use('/api/upload', expensiveOperationsLimiter);
+app.use('/api/companies', expensiveOperationsLimiter);
+
+// Add request delay middleware only for scraping endpoints
+app.use('/api/scrape', (req, res, next) => {
+  // Add random delay to prevent rate limiting
+  const delay = Math.random() * 2000 + 1000; // 1-3 seconds random delay
+  setTimeout(next, delay);
+});
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -1877,7 +1896,7 @@ app.post('/api/companies', async (req, res) => {
 // Get all companies with their status and filtering support
 app.get('/api/companies', async (req, res) => {
     try {
-        const { category, city, search } = req.query;
+        const { category, city, search, page = 1, limit = 20 } = req.query;
         let filter = {};
         
         // Add category filter if provided
@@ -1899,11 +1918,67 @@ app.get('/api/companies', async (req, res) => {
             ];
         }
         
-        const companies = await Company.find(filter).sort({ createdAt: -1 });
-        res.json(companies);
+        // Convert page and limit to numbers
+        const pageNum = parseInt(page);
+        const limitNum = parseInt(limit);
+        const skip = (pageNum - 1) * limitNum;
+        
+        // Get total count for pagination
+        const totalCompanies = await Company.countDocuments(filter);
+        
+        // Get paginated results
+        const companies = await Company.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limitNum);
+        
+        // Calculate pagination info
+        const totalPages = Math.ceil(totalCompanies / limitNum);
+        
+        res.json({
+            companies,
+            currentPage: pageNum,
+            totalPages,
+            totalCompanies,
+            limit: limitNum
+        });
     } catch (error) {
         console.error('Fetch error:', error);
         res.status(500).json({ error: 'Error fetching companies' });
+    }
+});
+
+// Batch update companies (for assigning categories)
+app.post('/api/companies/batch-update', async (req, res) => {
+    try {
+        const { companyIds, category } = req.body;
+        
+        if (!companyIds || !Array.isArray(companyIds) || companyIds.length === 0) {
+            return res.status(400).json({ error: 'Company IDs are required' });
+        }
+        
+        if (!category || !category.trim()) {
+            return res.status(400).json({ error: 'Category is required' });
+        }
+        
+        // Update all companies with the given IDs
+        const result = await Company.updateMany(
+            { _id: { $in: companyIds } },
+            { category: category.trim(), updatedAt: new Date() }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ error: 'No companies found' });
+        }
+        
+        res.json({ 
+            message: `Updated ${result.modifiedCount} companies`,
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('Batch update error:', error);
+        res.status(500).json({ error: 'Error updating companies' });
     }
 });
 
@@ -1916,6 +1991,36 @@ app.get('/api/categories', async (req, res) => {
     } catch (error) {
         console.error('Fetch categories error:', error);
         res.status(500).json({ error: 'Error fetching categories' });
+    }
+});
+
+// Create a new category
+app.post('/api/categories', async (req, res) => {
+    try {
+        const { name, type } = req.body;
+        
+        if (!name || !name.trim()) {
+            return res.status(400).json({ error: 'Category name is required' });
+        }
+        
+        const categoryName = name.trim();
+        
+        // Check if category already exists
+        const existingCategories = await Company.distinct('category');
+        if (existingCategories.includes(categoryName)) {
+            return res.status(409).json({ error: 'Category already exists' });
+        }
+        
+        // For manual categories, we don't need to store them separately
+        // They will be created when companies are assigned to them
+        res.json({ 
+            name: categoryName, 
+            type: type || 'manual',
+            message: 'Category created successfully' 
+        });
+    } catch (error) {
+        console.error('Create category error:', error);
+        res.status(500).json({ error: 'Error creating category' });
     }
 });
 

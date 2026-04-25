@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Filter, Grid, List, ChevronRight, Building, Users, Phone, MapPin, Star, Globe, Image as ImageIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { api, debounce } from '../utils/api';
 
 const Categories = () => {
   const [categories, setCategories] = useState([]);
@@ -20,11 +20,10 @@ const Categories = () => {
   const fetchCategories = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('/api/categories');
-      const existingCategories = response.data || [];
+      const existingCategories = await api.get('/api/categories');
       
       // Only use detected categories from API
-      setCategories(existingCategories);
+      setCategories(existingCategories || []);
     } catch (error) {
       console.error('Error fetching categories:', error);
       toast.error('Failed to fetch categories');
@@ -42,8 +41,7 @@ const Categories = () => {
       setLoading(true);
       
       // Fetch companies by category with precise matching
-      const response = await axios.get('/api/companies');
-      const allCompanies = response.data || [];
+      const allCompanies = await api.get('/api/companies');
       
       // Filter companies with strict category matching
       const filteredCompanies = allCompanies.filter(company => {
@@ -162,6 +160,19 @@ const Categories = () => {
     return colorMap[categoryName] || 'gray';
   };
 
+  // Debounced search function
+  const debouncedSearch = useCallback(
+    debounce((term) => {
+      setSearchTerm(term);
+    }, 300),
+    []
+  );
+
+  const handleSearchChange = (e) => {
+    const value = e.target.value;
+    debouncedSearch(value);
+  };
+
   const filteredCategories = categories.filter(category =>
     category && category.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -230,8 +241,7 @@ const Categories = () => {
             <input
               type="text"
               placeholder="Search categories..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={handleSearchChange}
               className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>

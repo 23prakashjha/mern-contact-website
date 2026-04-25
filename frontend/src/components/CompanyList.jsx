@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight, Eye, EyeOff } from 'lucide-react';
+import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight, Eye, EyeOff, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
 
-const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter = 'all' }) => {
+const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter = 'all', pagination, onPageChange }) => {
   const [expandedCompanies, setExpandedCompanies] = useState(new Set());
   const [expandedUrls, setExpandedUrls] = useState(new Set());
   // Helper function to truncate company names
@@ -318,6 +318,96 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
     }
   };
 
+  const renderPagination = () => {
+    if (!pagination || pagination.totalPages <= 1) return null;
+
+    const { currentPage, totalPages } = pagination;
+    const maxVisiblePages = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+    
+    if (endPage - startPage + 1 < maxVisiblePages) {
+      startPage = Math.max(1, endPage - maxVisiblePages + 1);
+    }
+
+    const pageNumbers = [];
+    for (let i = startPage; i <= endPage; i++) {
+      pageNumbers.push(i);
+    }
+
+    return (
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
+        <div className="flex items-center text-sm text-gray-700">
+          <span>
+            Showing {((currentPage - 1) * pagination.limit) + 1} to {Math.min(currentPage * pagination.limit, pagination.totalCompanies)} of{' '}
+            {pagination.totalCompanies} results
+          </span>
+        </div>
+        <div className="flex items-center space-x-2">
+          <button
+            onClick={() => onPageChange(currentPage - 1)}
+            disabled={currentPage === 1}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            <ChevronLeft className="w-4 h-4 mr-1" />
+            Previous
+          </button>
+          
+          {startPage > 1 && (
+            <>
+              <button
+                onClick={() => onPageChange(1)}
+                className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                1
+              </button>
+              {startPage > 2 && (
+                <span className="px-2 py-2 text-sm text-gray-500">...</span>
+              )}
+            </>
+          )}
+          
+          {pageNumbers.map((pageNum) => (
+            <button
+              key={pageNum}
+              onClick={() => onPageChange(pageNum)}
+              className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg transition-colors ${
+                pageNum === currentPage
+                  ? 'bg-blue-600 text-white border border-blue-600'
+                  : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+              }`}
+            >
+              {pageNum}
+            </button>
+          ))}
+          
+          {endPage < totalPages && (
+            <>
+              {endPage < totalPages - 1 && (
+                <span className="px-2 py-2 text-sm text-gray-500">...</span>
+              )}
+              <button
+                onClick={() => onPageChange(totalPages)}
+                className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                {totalPages}
+              </button>
+            </>
+          )}
+          
+          <button
+            onClick={() => onPageChange(currentPage + 1)}
+            disabled={currentPage === totalPages}
+            className="inline-flex items-center px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Next
+            <ChevronRightIcon className="w-4 h-4 ml-1" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   if (filteredCompanies.length === 0) {
     return (
       <div className="text-center max-w-4xl">
@@ -358,7 +448,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
           {filteredCompanies.map((company, index) => (
             <tr key={company._id} className="hover:bg-gray-50">
               <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                {index + 1}
+                {((pagination.currentPage - 1) * pagination.limit) + index + 1}
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1">
@@ -530,6 +620,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
           ))}
         </tbody>
       </table>
+      {renderPagination()}
       </div>
     </div>
   );
