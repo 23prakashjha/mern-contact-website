@@ -16,6 +16,12 @@ const Dashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState([]);
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalCompanies: 0,
+    limit: 20
+  });
     // Manual filter state
   const [manualFilters, setManualFilters] = useState({
     category: 'all',
@@ -26,11 +32,13 @@ const Dashboard = () => {
   // Handle manual filter changes
   const handleManualFiltersChange = (filters) => {
     setManualFilters(filters);
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
   // Handle manual search changes
   const handleManualSearchChange = (search) => {
     setManualFilters(prev => ({ ...prev, search }));
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
   // Clear all manual filters
@@ -40,6 +48,12 @@ const Dashboard = () => {
       city: 'all',
       search: ''
     });
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+  };
+
+  // Handle page change
+  const handlePageChange = (newPage) => {
+    setPagination(prev => ({ ...prev, currentPage: newPage }));
   };
 
   // Extract unique categories from companies data
@@ -91,8 +105,9 @@ const Dashboard = () => {
           params.append('search', manualFilters.search.trim());
         }
         
-        // Add high limit to show all records like other pages
-        params.append('limit', '1000');
+        // Add pagination parameters
+        params.append('page', pagination.currentPage.toString());
+        params.append('limit', pagination.limit.toString());
         
         const url = `http://localhost:5000/api/companies${params.toString() ? '?' + params.toString() : ''}`;
         const response = await fetch(url);
@@ -100,13 +115,19 @@ const Dashboard = () => {
         
         setCompanies(data.companies || []);
         
-        // Update stats based on all companies (no pagination)
-        const allCompanies = data.companies || [];
+        // Update pagination info
+        setPagination(prev => ({
+          ...prev,
+          totalPages: data.totalPages || 1,
+          totalCompanies: data.totalCompanies || 0
+        }));
+        
+        // Update stats based on all companies (use total count from API)
         setStats({
-          total: allCompanies.length,
-          sent: allCompanies.filter(c => c.status === 'sent').length,
-          pending: allCompanies.filter(c => c.status === 'pending').length,
-          failed: allCompanies.filter(c => c.status === 'failed').length
+          total: data.totalCompanies || 0,
+          sent: data.stats?.sent || 0,
+          pending: data.stats?.pending || 0,
+          failed: data.stats?.failed || 0
         });
       } catch (error) {
         console.error('Error fetching companies:', error);
@@ -118,12 +139,21 @@ const Dashboard = () => {
     // Add debounce to prevent rapid API calls during navigation
     const debounceTimer = setTimeout(fetchCompanies, 300);
     return () => clearTimeout(debounceTimer);
-  }, [manualFilters]);
+  }, [manualFilters, pagination.currentPage]);
   return (
-    <div className="space-y-6 animate-fadeIn">
-      <Toaster position="top-right" />
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+      {/* Animated Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-600/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-purple-400/10 to-pink-600/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute bottom-0 left-1/2 w-96 h-96 bg-gradient-to-br from-pink-400/10 to-indigo-600/10 rounded-full blur-3xl animate-pulse delay-500"></div>
+      </div>
+
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="space-y-6 animate-fadeIn">
+          <Toaster position="top-right" />
       {/* Header Section */}
-      <div className="bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-4 border border-white/50">
         <div className="flex flex-col lg:flex-row lg:justify-between lg:items-center space-y-4 lg:space-y-0">
           <div className="space-y-2">
             <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
@@ -152,15 +182,17 @@ const Dashboard = () => {
 
       {/* Stats Section */}
       {loading ? (
-        <div className="flex justify-center items-center h-32">
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/50 flex justify-center items-center h-32">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
         </div>
       ) : (
-        <Stats stats={stats} />
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-4 border border-white/50">
+          <Stats stats={stats} />
+        </div>
       )}
 
       {/* Manual Filters Section */}
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-4 border border-white/50">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-2">
             <Filter className="w-5 h-5 text-gray-600" />
@@ -246,19 +278,33 @@ const Dashboard = () => {
       </div>
 
       {/* Companies List */}
-      <CompanyList 
-        companies={companies}
-        loading={loading}
-        searchTerm={manualFilters.search}
-      />
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-4 border border-white/50">
+        <CompanyList 
+          companies={companies}
+          loading={loading}
+          searchTerm={manualFilters.search}
+          pagination={pagination}
+          onPageChange={handlePageChange}
+          onDeleteCompany={(companyId) => {
+            setCompanies(prev => prev.filter(c => c._id !== companyId));
+            setPagination(prev => ({ ...prev, totalCompanies: prev.totalCompanies - 1 }));
+          }}
+        />
+      </div>
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
-          <RecentActivity />
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-4 border border-white/50">
+            <RecentActivity />
+          </div>
         </div>
         <div className="space-y-6">
-          <QuickActions />
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-4 border border-white/50">
+            <QuickActions />
+          </div>
+        </div>
+      </div>
         </div>
       </div>
     </div>
