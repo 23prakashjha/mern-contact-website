@@ -135,7 +135,6 @@ const expensiveOperationsLimiter = rateLimit({
 
 // Apply expensive operations limiter to specific endpoints
 app.use('/api/upload', expensiveOperationsLimiter);
-app.use('/api/companies', expensiveOperationsLimiter);
 
 // Add request delay middleware only for scraping endpoints
 app.use('/api/scrape', (req, res, next) => {

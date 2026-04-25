@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api } from '../utils/api';
 
 const RecentActivity = () => {
   const [activities, setActivities] = useState([]);
   const [loading, setLoading] = useState(true);
-
-  const API_BASE_URL = 'http://localhost:5000/api';
 
   useEffect(() => {
     fetchRecentActivity();
@@ -13,8 +11,8 @@ const RecentActivity = () => {
 
   const fetchRecentActivity = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/companies?limit=5`);
-      const companies = response.data.slice(0, 5);
+      const response = await api.get('/api/companies?limit=5');
+      const companies = Array.isArray(response) ? response.slice(0, 5) : [];
       
       const activities = companies.map(company => ({
         id: company._id,

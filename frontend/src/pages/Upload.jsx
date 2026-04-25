@@ -290,9 +290,9 @@ const Upload = () => {
   const fetchCompanies = async () => {
     try {
       const response = await makeApiCall(async () => {
-        return await axios.get(`${API_BASE_URL}/companies`);
+        return await axios.get(`${API_BASE_URL}/companies?limit=1000`);
       }, 3, 1000);
-      setCompanies(response.data);
+      setCompanies(response.data.companies || response.data || []);
     } catch (error) {
       console.error('Failed to fetch companies:', error);
     }

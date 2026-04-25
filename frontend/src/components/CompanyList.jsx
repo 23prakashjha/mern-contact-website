@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
 import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight, Eye, EyeOff, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
 
-const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter = 'all', pagination, onPageChange }) => {
+const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter = 'all', pagination = {}, onPageChange }) => {
   const [expandedCompanies, setExpandedCompanies] = useState(new Set());
   const [expandedUrls, setExpandedUrls] = useState(new Set());
+  
+  // Ensure pagination is always an object with default values
+  const safePagination = pagination || {};
+  const { currentPage = 1, limit = 20, totalPages = 1, totalCompanies = 0 } = safePagination;
   // Helper function to truncate company names
   const truncateCompanyName = (name, maxChars = 20) => {
     if (!name) return '';
@@ -319,9 +323,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
   };
 
   const renderPagination = () => {
-    if (!pagination || pagination.totalPages <= 1) return null;
-
-    const { currentPage, totalPages } = pagination;
+    if (!totalPages || totalPages <= 1) return null;
     const maxVisiblePages = 5;
     let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
     let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
@@ -339,8 +341,8 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
       <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200">
         <div className="flex items-center text-sm text-gray-700">
           <span>
-            Showing {((currentPage - 1) * pagination.limit) + 1} to {Math.min(currentPage * pagination.limit, pagination.totalCompanies)} of{' '}
-            {pagination.totalCompanies} results
+            Showing {((currentPage - 1) * (limit ?? 20)) + 1} to {Math.min(currentPage * (limit ?? 20), totalCompanies ?? 0)} of{' '}
+            {totalCompanies ?? 0} results
           </span>
         </div>
         <div className="flex items-center space-x-2">
@@ -448,7 +450,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
           {filteredCompanies.map((company, index) => (
             <tr key={company._id} className="hover:bg-gray-50">
               <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                {((pagination.currentPage - 1) * pagination.limit) + index + 1}
+                {((currentPage - 1) * limit) + index + 1}
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-1">

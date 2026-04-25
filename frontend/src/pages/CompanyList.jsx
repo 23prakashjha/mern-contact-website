@@ -32,8 +32,9 @@ const CompanyList = () => {
   const fetchCompanies = async () => {
     try {
       setLoading(true);
-      const companies = await api.get('/api/companies');
-      setCompanies(companies || []);
+      // Request all companies by setting a high limit
+      const response = await api.get('/api/companies?limit=1000');
+      setCompanies(response.companies || []);
     } catch (error) {
       console.error('Error fetching companies:', error);
       toast.error('Failed to fetch companies');
@@ -140,7 +141,7 @@ const CompanyList = () => {
     debouncedSearch(value);
   };
 
-  const filteredCompanies = companies.filter(company => {
+  const filteredCompanies = Array.isArray(companies) ? companies.filter(company => {
     const searchLower = searchTerm.toLowerCase();
     return (
       company.company?.toLowerCase().includes(searchLower) ||
@@ -149,7 +150,7 @@ const CompanyList = () => {
       company.city?.toLowerCase().includes(searchLower) ||
       company.category?.toLowerCase().includes(searchLower)
     );
-  });
+  }) : [];
 
   const renderCompanyCard = (company) => {
     const isSelected = selectedCompanies.has(company._id);

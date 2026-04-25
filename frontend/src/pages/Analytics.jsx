@@ -22,13 +22,13 @@ const Analytics = () => {
     try {
       const [statsResponse, companiesResponse] = await Promise.all([
         axios.get(`${API_BASE_URL}/stats`),
-        axios.get(`${API_BASE_URL}/companies`)
+        axios.get(`${API_BASE_URL}/companies?limit=1000`)
       ]);
       setStats(statsResponse.data);
-      setCompanies(companiesResponse.data);
+      setCompanies(companiesResponse.data.companies || []);
       
       // Process all dates data
-      const datesData = processAllDatesData(companiesResponse.data);
+      const datesData = processAllDatesData(companiesResponse.data.companies || []);
       setAllDatesData(datesData);
       setFilteredDatesData(datesData); // Initially show all data
     } catch (error) {

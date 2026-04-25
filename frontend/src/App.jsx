@@ -10,6 +10,7 @@ import Settings from './pages/Settings';
 import ExcelScraper from './pages/ExcelScraper';
 import GoogleMapsScraper from './pages/GoogleMapsScraper';
 import Categories from './pages/Categories';
+import CompanyList from './pages/CompanyList';
 
 function AppContent() {
   const [isNavigating, setIsNavigating] = useState(false);
@@ -33,6 +34,7 @@ function AppContent() {
         <Route path="/excel-scraper" element={<ExcelScraper />} />
         <Route path="/google-maps-scraper" element={<GoogleMapsScraper />} />
         <Route path="/categories" element={<Categories />} />
+        <Route path="/company-list" element={<CompanyList />} />
       </Routes>
     </Layout>
   );

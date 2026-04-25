@@ -16,13 +16,7 @@ const Dashboard = () => {
   });
   const [loading, setLoading] = useState(true);
   const [companies, setCompanies] = useState([]);
-  const [pagination, setPagination] = useState({
-    currentPage: 1,
-    totalPages: 1,
-    totalCompanies: 0,
-    limit: 20
-  });
-  // Manual filter state
+    // Manual filter state
   const [manualFilters, setManualFilters] = useState({
     category: 'all',
     city: 'all',
@@ -32,18 +26,11 @@ const Dashboard = () => {
   // Handle manual filter changes
   const handleManualFiltersChange = (filters) => {
     setManualFilters(filters);
-    setPagination(prev => ({ ...prev, currentPage: 1 })); // Reset to first page when filters change
   };
 
   // Handle manual search changes
   const handleManualSearchChange = (search) => {
     setManualFilters(prev => ({ ...prev, search }));
-    setPagination(prev => ({ ...prev, currentPage: 1 })); // Reset to first page when search changes
-  };
-
-  // Handle page change
-  const handlePageChange = (newPage) => {
-    setPagination(prev => ({ ...prev, currentPage: newPage }));
   };
 
   // Clear all manual filters
@@ -104,28 +91,22 @@ const Dashboard = () => {
           params.append('search', manualFilters.search.trim());
         }
         
-        // Add pagination parameters
-        params.append('page', pagination.currentPage);
-        params.append('limit', pagination.limit);
+        // Add high limit to show all records like other pages
+        params.append('limit', '1000');
         
         const url = `http://localhost:5000/api/companies${params.toString() ? '?' + params.toString() : ''}`;
         const response = await fetch(url);
         const data = await response.json();
         
         setCompanies(data.companies || []);
-        setPagination(prev => ({
-          ...prev,
-          totalPages: data.totalPages || 1,
-          totalCompanies: data.totalCompanies || 0,
-          currentPage: data.currentPage || 1
-        }));
         
-        // Update stats based on filtered companies
+        // Update stats based on all companies (no pagination)
+        const allCompanies = data.companies || [];
         setStats({
-          total: data.totalCompanies || 0,
-          sent: (data.companies || []).filter(c => c.status === 'sent').length,
-          pending: (data.companies || []).filter(c => c.status === 'pending').length,
-          failed: (data.companies || []).filter(c => c.status === 'failed').length
+          total: allCompanies.length,
+          sent: allCompanies.filter(c => c.status === 'sent').length,
+          pending: allCompanies.filter(c => c.status === 'pending').length,
+          failed: allCompanies.filter(c => c.status === 'failed').length
         });
       } catch (error) {
         console.error('Error fetching companies:', error);
@@ -137,7 +118,7 @@ const Dashboard = () => {
     // Add debounce to prevent rapid API calls during navigation
     const debounceTimer = setTimeout(fetchCompanies, 300);
     return () => clearTimeout(debounceTimer);
-  }, [manualFilters, pagination.currentPage]);
+  }, [manualFilters]);
   return (
     <div className="space-y-6 animate-fadeIn">
       <Toaster position="top-right" />
@@ -269,8 +250,6 @@ const Dashboard = () => {
         companies={companies}
         loading={loading}
         searchTerm={manualFilters.search}
-        pagination={pagination}
-        onPageChange={handlePageChange}
       />
 
       {/* Main Content Grid */}

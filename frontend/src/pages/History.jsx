@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import { api } from '../utils/api';
 import CompanyList from '../components/CompanyList';
 import { FileText, Download, Mail, Phone, RefreshCw, CheckCircle, MessageSquare, Send, Smartphone, AlertCircle, Trash2, Search, Filter, MapPin, Globe, Building, Users, TrendingUp, Calendar, Clock, ChevronDown, ChevronUp, Zap, Target, BarChart3, Activity, Sparkles, Star, Shield, Database, Layers, ZapOff, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -51,20 +51,22 @@ const History = () => {
   // Extract unique categories from companies data
   const getUniqueCategories = () => {
     const categories = new Set();
-    companies.forEach(company => {
-      if (company.detectedCategory && company.detectedCategory.category) {
-        categories.add(company.detectedCategory.category);
-      }
-      if (company.category) {
-        categories.add(company.category);
-      }
-      if (company.businessCategory) {
-        categories.add(company.businessCategory);
-      }
-      if (company.industry) {
-        categories.add(company.industry);
-      }
-    });
+    if (Array.isArray(companies)) {
+      companies.forEach(company => {
+        if (company.detectedCategory && company.detectedCategory.category) {
+          categories.add(company.detectedCategory.category);
+        }
+        if (company.category) {
+          categories.add(company.category);
+        }
+        if (company.businessCategory) {
+          categories.add(company.businessCategory);
+        }
+        if (company.industry) {
+          categories.add(company.industry);
+        }
+      });
+    }
     return Array.from(categories).sort();
   };
 
@@ -109,15 +111,30 @@ const History = () => {
     }
   };
 
-  const fetchCompanies = async () => {
+  const fetchCompanies = async (retryCount = 0) => {
+    const maxRetries = 3;
+    const retryDelay = (attempt) => Math.min(1000 * Math.pow(2, attempt), 5000); // Exponential backoff, max 5s
+
     try {
-      const response = await axios.get(`${API_BASE_URL}/companies`);
-      setCompanies(response.data);
+      const response = await api.get('/api/companies?limit=1000');
+      setCompanies(Array.isArray(response.companies) ? response.companies : []);
     } catch (error) {
       console.error('Error fetching companies:', error);
+      
+      // Handle rate limiting with retry logic
+      if (error.response?.status === 429 && retryCount < maxRetries) {
+        console.log(`Rate limited. Retrying in ${retryDelay(retryCount)}ms... (Attempt ${retryCount + 1}/${maxRetries})`);
+        setTimeout(() => fetchCompanies(retryCount + 1), retryDelay(retryCount));
+        return;
+      }
+      
+      // If we've exhausted retries or it's a different error, set empty array
       setCompanies([]);
+      toast.error('Failed to fetch companies');
     } finally {
-      setLoading(false);
+      if (retryCount === 0) {
+        setLoading(false);
+      }
     }
   };
 
@@ -194,9 +211,9 @@ const History = () => {
     }
 
     try {
-      const companiesToSend = filteredCompanies.filter(company => 
+      const companiesToSend = Array.isArray(filteredCompanies) ? filteredCompanies.filter(company => 
         selectedCompanies.includes(company._id)
-      );
+      ) : [];
 
       for (const company of companiesToSend) {
         const messageData = {
@@ -222,7 +239,7 @@ const History = () => {
     }
   };
 
-  const filteredCompanies = companies.filter(company => {
+  const filteredCompanies = Array.isArray(companies) ? companies.filter(company => {
     const matchesFilter = filter === 'all' || company.status === filter;
     const matchesSearch = company.company.toLowerCase().includes((manualFilters.search || '').toLowerCase()) ||
                          company.email.toLowerCase().includes((manualFilters.search || '').toLowerCase()) ||
@@ -244,7 +261,7 @@ const History = () => {
                        (company.location && normalizeText(company.location).includes(selectedCityNormalized));
     
     return matchesFilter && matchesSearch && matchesCategory && matchesCity;
-  });
+  }) : [];
 
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
@@ -382,14 +399,14 @@ const History = () => {
                 <div className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-green-50 to-emerald-50 rounded-2xl border border-green-200">
                   <CheckCircle className="w-4 h-4 text-green-600" />
                   <div>
-                    <p className="text-lg font-bold text-green-900">{companies.filter(c => c.status === 'sent').length}</p>
+                    <p className="text-lg font-bold text-green-900">{Array.isArray(companies) ? companies.filter(c => c.status === 'sent').length : 0}</p>
                     <p className="text-xs text-green-600">Sent</p>
                   </div>
                 </div>
                 <div className="flex items-center space-x-2 px-3 py-2 bg-gradient-to-r from-yellow-50 to-amber-50 rounded-2xl border border-yellow-200">
                   <Clock className="w-4 h-4 text-yellow-600" />
                   <div>
-                    <p className="text-lg font-bold text-yellow-900">{companies.filter(c => c.status === 'pending').length}</p>
+                    <p className="text-lg font-bold text-yellow-900">{Array.isArray(companies) ? companies.filter(c => c.status === 'pending').length : 0}</p>
                     <p className="text-xs text-yellow-600">Pending</p>
                   </div>
                 </div>
@@ -836,7 +853,7 @@ const History = () => {
       </div>
 
       {/* Custom Styles */}
-      <style jsx>{`
+      <style>{`
         @keyframes fadeIn {
           from {
             opacity: 0;

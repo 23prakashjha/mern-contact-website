@@ -128,9 +128,9 @@ const IndividualMessage = () => {
   useEffect(() => {
     const fetchCompanies = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/companies');
+        const response = await fetch('http://localhost:5000/api/companies?limit=1000');
         const data = await response.json();
-        setCompanies(data);
+        setCompanies(data.companies || []);
       } catch (error) {
         console.error('Error fetching companies:', error);
       }

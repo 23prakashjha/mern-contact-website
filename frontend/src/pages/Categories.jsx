@@ -41,7 +41,8 @@ const Categories = () => {
       setLoading(true);
       
       // Fetch companies by category with precise matching
-      const allCompanies = await api.get('/api/companies');
+      const response = await api.get('/api/companies?limit=1000');
+      const allCompanies = response.companies || [];
       
       // Filter companies with strict category matching
       const filteredCompanies = allCompanies.filter(company => {
