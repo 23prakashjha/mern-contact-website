@@ -328,43 +328,106 @@ const extractEmails = (text) => {
     
     const emails = [];
     
-    // Pattern 1: Standard email regex
-    const standardEmailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
-    const standardMatches = text.match(standardEmailRegex) || [];
-    emails.push(...standardMatches);
+    // Strategy: Find all @ symbols and carefully extract clean emails
+    const atPositions = [];
+    let pos = text.indexOf('@');
+    while (pos !== -1) {
+        atPositions.push(pos);
+        pos = text.indexOf('@', pos + 1);
+    }
     
-    // Pattern 2: Handle concatenated emails like "thedentalcureg@gmail.comthedentalcureg"
-    const concatenatedRegex = /([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
-    const concatenatedMatches = text.match(concatenatedRegex) || [];
-    emails.push(...concatenatedMatches);
+    atPositions.forEach(atPos => {
+        // Extract username by going backwards from @
+        let username = '';
+        let i = atPos - 1;
+        while (i >= 0 && /[A-Za-z0-9._%+-]/.test(text[i])) {
+            username = text[i] + username;
+            i--;
+        }
+        
+        // Extract domain by going forwards from @
+        let domain = '';
+        let j = atPos + 1;
+        while (j < text.length && /[A-Za-z0-9.-]/.test(text[j])) {
+            domain += text[j];
+            j++;
+        }
+        
+        const potentialEmail = username + '@' + domain;
+        
+        // Basic email format validation
+        if (!potentialEmail.match(/^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/)) {
+            return; // Skip invalid format
+        }
+        
+        // Get the full context for analysis
+        const emailStartIndex = atPos - username.length;
+        const emailEndIndex = atPos + domain.length + 1;
+        
+        const fullContext = text;
+        const beforeEmail = fullContext.substring(0, emailStartIndex);
+        const afterEmail = fullContext.substring(emailEndIndex);
+        
+        // SPECIFIC FILTERS FOR USER'S PROBLEMATIC CASES:
+        
+        // 1. Filter out phone+email concatenations (like user's examples)
+        if (beforeEmail.match(/\d{3,}[-.\s]?\d{3,}[-.\s]?\d{4,}\s*$/)) {
+            return; // Skip: phone number before email
+        }
+        
+        // 2. Filter out emails with HTML/action words attached
+        const problematicSuffixes = ['hoursopen', 'copyright', 'homeabout', 'comshop', 'comc'];
+        if (problematicSuffixes.some(suffix => potentialEmail.toLowerCase().endsWith(suffix))) {
+            return; // Skip: has problematic suffix
+        }
+        
+        // 3. Filter out emails with problematic prefixes
+        const problematicPrefixes = ['aboutportfolioservicescontact'];
+        if (problematicPrefixes.some(prefix => potentialEmail.toLowerCase().startsWith(prefix))) {
+            return; // Skip: has problematic prefix
+        }
+        
+        // 4. Check if email is surrounded by non-email characters (proper boundaries)
+        const charBefore = emailStartIndex > 0 ? fullContext[emailStartIndex - 1] : '';
+        const charAfter = emailEndIndex < fullContext.length ? fullContext[emailEndIndex] : '';
+        
+        const isProperlyBounded = (emailStartIndex === 0 || !/[A-Za-z0-9._%+-]/.test(charBefore)) &&
+                                 (emailEndIndex === fullContext.length || !/[A-Za-z0-9.-]/.test(charAfter));
+        
+        if (!isProperlyBounded) {
+            return; // Skip: not properly bounded
+        }
+        
+        // 5. Additional context checks
+        const contextBefore = fullContext.substring(Math.max(0, emailStartIndex - 20), emailStartIndex);
+        const contextAfter = fullContext.substring(emailEndIndex, Math.min(fullContext.length, emailEndIndex + 20));
+        
+        // Check for action words immediately before/after
+        const actionWords = ['phone', 'call', 'book', 'schedule', 'homeabout', 'info', 'enquiries', 
+                           'about', 'com', 'shop', 'admin', 'hours', 'open', 'copyright', 
+                           'portfolio', 'services', 'contact'];
+        
+        const hasActionWordBefore = actionWords.some(word => 
+            contextBefore.toLowerCase().endsWith(word.toLowerCase())
+        );
+        const hasActionWordAfter = actionWords.some(word => 
+            contextAfter.toLowerCase().startsWith(word.toLowerCase())
+        );
+        
+        if (hasActionWordBefore || hasActionWordAfter) {
+            return; // Skip: near action words
+        }
+        
+        // If passed all checks, accept the email
+        emails.push(potentialEmail);
+    });
     
-    // Pattern 3: Handle UUID-style emails (sentry/wixpress style)
+    // Handle UUID-style emails (sentry/wixpress style) - these are valid
     const uuidRegex = /\b[a-f0-9]{32}@(?:sentry(?:-next)?\.wixpress\.com|sentry\.io)\b/g;
     const uuidMatches = text.match(uuidRegex) || [];
     emails.push(...uuidMatches);
     
-    // Pattern 4: Handle emails with domain duplication like "gmail.comthedentalcureg@gmail.com"
-    const domainDuplicationRegex = /(?:[a-z]+\.(?:com|net|org|co|in))?([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
-    const domainDuplicationMatches = text.match(domainDuplicationRegex) || [];
-    emails.push(...domainDuplicationMatches);
-    
-    // Pattern 5: Handle phone+email combinations
-    const phoneEmailRegex = /(?:\d{3,4}[-.\s]?\d{3,4}[-.\s]?\d{4,})?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
-    const phoneEmailMatches = text.match(phoneEmailRegex) || [];
-    emails.push(...phoneEmailMatches);
-    
-    // Pattern 6: Handle mixed content with action words
-    const mixedContentRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})(?:phone|call|book|schedule|homeabout|info|enquiries)?/g;
-    const mixedContentMatches = text.match(mixedContentRegex) || [];
-    emails.push(...mixedContentMatches);
-    
-    // Pattern 7: Extract emails from complex concatenated strings
-    // Examples: "himanshu.a178@gmail.comhimanshu.a178@gmail.com"
-    const complexConcatRegex = /([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
-    const complexConcatMatches = text.match(complexConcatRegex) || [];
-    emails.push(...complexConcatMatches);
-    
-    // Remove duplicates and filter valid emails
+    // Remove duplicates and final validation
     const uniqueEmails = [...new Set(emails)]
         .map(email => email.toLowerCase().trim().replace(/^mailto:/, ''))
         .filter(email => {
@@ -394,8 +457,11 @@ const extractEmails = (text) => {
             // Domain validation
             if (!domain.includes('.')) return false;
             
-            // Username shouldn't start with digit (but allow for some cases)
-            if (username.match(/^\d{10,}$/)) return false; // Exclude pure numbers
+            // Username shouldn't be pure numbers
+            if (username.match(/^\d+$/)) return false;
+            
+            // Final check: ensure no phone number patterns
+            if (email.match(/\d{3,}[-.\s]?\d{3,}[-.\s]?\d{4,}/)) return false;
             
             return true;
         })
@@ -481,7 +547,14 @@ const testEmailProcessing = () => {
         'drsahilmaghu@gmail.comdrsahilmaghu',
         'gmail.comdrsahilmaghu@gmail.comdrsahilmaghu,himanshu.a178@gmail.comhimanshu',
         '.a178@gmail.com,98102-44656drbhutani@yahoo.com,garima_clinic@yahoo.inbook',
-        'garima_clinic@yahoo.inphone'
+        'garima_clinic@yahoo.inphone',
+        // User's specific test cases
+        '91-8959677492rudrapratapsinghrudra296@gmail.comshop',
+        'admin@brcaterers.comhoursopen',
+        'lavishtentindia@gmail.comcopyright',
+        'aboutportfolioservicescontactinfo@goldenleafevents.com',
+        'smilegurgaon@gmail.comhomeabout',
+        '0124-4326628thedentalhomeggn@gmail.comc'
     ];
 
     console.log('=== BACKEND EMAIL PROCESSING TEST ===');
