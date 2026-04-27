@@ -35,19 +35,11 @@ const History = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [animateCards, setAnimateCards] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [customCities, setCustomCities] = useState([]);
 
   const API_BASE_URL = 'http://localhost:5000/api';
 
-  // India cities list (truncated for brevity)
-  const indiaCities = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad',
-    'Jaipur', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam',
-    'Pimpri-Chinchwad', 'Patna', 'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik',
-    'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivli', 'Vasai-Virar', 'Varanasi',
-    'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
-    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur'
-  ];
-
+  
   // Extract unique categories from companies data
   const getUniqueCategories = () => {
     const categories = new Set();
@@ -73,6 +65,11 @@ const History = () => {
   useEffect(() => {
     fetchCompanies();
     fetchProcessedData();
+    // Load custom cities from localStorage
+    const savedCities = localStorage.getItem('customCities');
+    if (savedCities) {
+      setCustomCities(JSON.parse(savedCities));
+    }
     setTimeout(() => setAnimateCards(true), 100);
   }, []);
 
@@ -540,8 +537,8 @@ const History = () => {
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
                     >
                       <option value="all">All Cities</option>
-                      {indiaCities.map((city) => (
-                        <option key={city} value={city}>
+                      {customCities.map((city, index) => (
+                        <option key={index} value={city}>
                           {city}
                         </option>
                       ))}

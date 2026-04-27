@@ -7,6 +7,7 @@ const IndividualMessage = () => {
   const [formData, setFormData] = useState({
     phone: '',
     email: '',
+    senderEmail: '',
     message: '',
     communicationType: 'email'
   });
@@ -30,6 +31,8 @@ const IndividualMessage = () => {
   
   // Email filtering state
   const [emailFilter, setEmailFilter] = useState('all'); // 'all', 'with_email', 'without_email'
+  
+  const [customCities, setCustomCities] = useState([]);
   
   
   // Message toolbar state
@@ -72,37 +75,7 @@ const IndividualMessage = () => {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [formData.message]); // Include formData.message to ensure latest state
 
-  // India cities list (same as in History page)
-  const indiaCities = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad',
-    'Jaipur', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam',
-    'Pimpri-Chinchwad', 'Patna', 'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik',
-    'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivli', 'Vasai-Virar', 'Varanasi',
-    'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
-    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur',
-    'Madurai', 'Raipur', 'Kota', 'Chandigarh', 'Guwahati', 'Hubli-Dharwad', 'Cuttack',
-    'Firozabad', 'Mangalore', 'Dehradun', 'Bhilai', 'Tiruchirappalli', 'Gurgaon',
-    'Noida', 'Bhubaneswar', 'Salem', 'Warangal', 'Kochi', 'Guntur', 'Bhiwandi',
-    'Raurkela', 'Bokaro Steel City', 'Siliguri', 'Tirupur', 'Moradabad', 'Fategarh Sahib',
-    'Jalandhar', 'Bhatpara', 'South Dumdum', 'Bardhaman', 'Mysore', 'Panihati',
-    'Tatanagar', 'Kamarhati', 'Durgapur', 'Bangalore Rural', 'North Dumdum', 'Berhampur',
-    'Pondicherry', 'Nanded', 'Imphal', 'Rajahmundry', 'Tirupati', 'Karnal', 'Kolhapur',
-    'Ajmer', 'Gulbarga', 'Jamshedpur', 'Bhilwara', 'Gwalior', 'Ujjain', 'Loni',
-    'Sikandarabad', 'Jhansi', 'Shimla', 'Raniganj', 'Aligarh', 'Parbhani', 'Tumkur',
-    'Bikaner', 'Panipat', 'Eluru', 'Sambalpur', 'Nizamabad', 'Secunderabad', 'Erode',
-    'Bellary', 'Bhilai', 'Vellore', 'Aizawl', 'Kochi-Munnar', 'Kozhikode', 'Akola',
-    'Kurnool', 'Bokaro', 'Belgaum', 'Latur', 'Gulbarga', 'Udupi', 'Davanagere',
-    'Kolar', 'Mangalore', 'Chitradurga', 'Bellary', 'Raichur', 'Bidar', 'Hospet',
-    'Gulbarga', 'Bijapur', 'Bagalkot', 'Gokak', 'Mudhol', 'Badami', 'Bankapura',
-    'Kundgol', 'Mundargi', 'Nargund', 'Navalgund', 'Ron', 'Shirhatti', 'Yelburga',
-    'Aland', 'Afzalpur', 'Athni', 'Babaleshwar', 'Bailhongal', 'Bamnasi', 'Basavakalyan',
-    'Bhalki', 'Chincholi', 'Deodurg', 'Gurmatkal', 'Hukkeri', 'Jevargi', 'Kamalapur',
-    'Kansur', 'Khadgat', 'Konnur', 'Koppal', 'Kotnoor', 'Koushambi', 'Kudligi',
-    'Lingsugur', 'Muddebihal', 'Mudhol', 'Mundargi', 'Nandgad', 'Naragund', 'Navalgund',
-    'Raichur', 'Ron', 'Sedam', 'Shahabad', 'Shirhatti', 'Shorapur', 'Sindgi',
-    'Surpur', 'Talikota', 'Yadrami', 'Yelburga', 'Yergol', 'Zalki'
-  ];
-
+  
   
   // Extract unique categories from companies data
   const getUniqueCategories = () => {
@@ -137,6 +110,11 @@ const IndividualMessage = () => {
     };
 
     fetchCompanies();
+    // Load custom cities from localStorage
+    const savedCities = localStorage.getItem('customCities');
+    if (savedCities) {
+      setCustomCities(JSON.parse(savedCities));
+    }
   }, []);
 
   // Refresh companies when page loads or after upload
@@ -224,6 +202,7 @@ const IndividualMessage = () => {
     setFormData({
       phone: company.phone || '',
       email: company.email || '',
+      senderEmail: formData.senderEmail,
       message: `Hello ${company.company}, we would like to connect with you...`,
       communicationType: company.email ? 'email' : 'sms'
     });
@@ -301,11 +280,13 @@ const IndividualMessage = () => {
         response = await axios.post('http://localhost:5000/api/send-bulk-messages', {
           companyIds: selectedCompanies,
           message: formData.message,
-          communicationType: formData.communicationType
+          communicationType: formData.communicationType,
+          senderEmail: formData.senderEmail
         });
       } else if (formData.communicationType === 'email') {
         response = await axios.post('http://localhost:5000/api/send-individual-email', {
           email: formData.email,
+          senderEmail: formData.senderEmail,
           subject: 'Message from Contact Form',
           message: formData.message
         });
@@ -313,6 +294,7 @@ const IndividualMessage = () => {
         response = await axios.post('http://localhost:5000/api/send-individual-combined', {
           phone: formData.phone,
           email: formData.email,
+          senderEmail: formData.senderEmail,
           subject: 'Message from Contact Form',
           message: formData.message,
           communicationType: 'all_three'
@@ -321,6 +303,7 @@ const IndividualMessage = () => {
         response = await axios.post('http://localhost:5000/api/send-individual-combined', {
           phone: formData.phone,
           email: formData.email,
+          senderEmail: formData.senderEmail,
           subject: 'Message from Contact Form',
           message: formData.message,
           communicationType: 'email_and_sms'
@@ -329,6 +312,7 @@ const IndividualMessage = () => {
         response = await axios.post('http://localhost:5000/api/send-individual-combined', {
           phone: formData.phone,
           email: formData.email,
+          senderEmail: formData.senderEmail,
           subject: 'Message from Contact Form',
           message: formData.message,
           communicationType: 'email_and_whatsapp'
@@ -578,6 +562,7 @@ const IndividualMessage = () => {
     setFormData({
       phone: '',
       email: '',
+      senderEmail: '',
       message: '',
       communicationType: 'email'
     });
@@ -684,11 +669,11 @@ const IndividualMessage = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
                   >
                     <option value="all">All Cities</option>
-                    {indiaCities.map((city) => (
-                      <option key={city} value={city}>
-                        {city}
-                      </option>
-                    ))}
+                  {customCities.map((city, index) => (
+                    <option key={index} value={city}>
+                      {city}
+                    </option>
+                  ))}
                   </select>
                 </div>
               </div>
@@ -915,11 +900,11 @@ const IndividualMessage = () => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
                   >
                     <option value="all">All Cities</option>
-                    {indiaCities.map((city) => (
-                      <option key={city} value={city}>
-                        {city}
-                      </option>
-                    ))}
+                  {customCities.map((city, index) => (
+                    <option key={index} value={city}>
+                      {city}
+                    </option>
+                  ))}
                   </select>
                 </div>
               </div>
@@ -1107,24 +1092,41 @@ const IndividualMessage = () => {
 
         {/* Communication Type Selection for Bulk Mode */}
         {bulkMode && (
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Send Via
-            </label>
-            <select
-              name="communicationType"
-              value={formData.communicationType}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="email">📧 Email</option>
-              <option value="sms">📱 SMS</option>
-              <option value="whatsapp">💬 WhatsApp</option>
-              <option value="email_sms">📧📱 Email + SMS</option>
-              <option value="email_whatsapp">📧💬 Email + WhatsApp</option>
-              <option value="all">📱💬 SMS + WhatsApp</option>
-              <option value="all_channels">📧📱💬 Email + SMS + WhatsApp</option>
-            </select>
+          <div className="mb-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Send Via
+              </label>
+              <select
+                name="communicationType"
+                value={formData.communicationType}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="email">📧 Email</option>
+                <option value="sms">📱 SMS</option>
+                <option value="whatsapp">💬 WhatsApp</option>
+                <option value="email_sms">📧📱 Email + SMS</option>
+                <option value="email_whatsapp">📧💬 Email + WhatsApp</option>
+                <option value="all">📱💬 SMS + WhatsApp</option>
+                <option value="all_channels">📧📱💬 Email + SMS + WhatsApp</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Sender Email *
+              </label>
+              <input
+                type="email"
+                name="senderEmail"
+                value={formData.senderEmail}
+                onChange={handleChange}
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                placeholder="your.email@example.com"
+              />
+            </div>
           </div>
         )}
         
@@ -1165,22 +1167,20 @@ const IndividualMessage = () => {
                 </select>
               </div>
 
-              {formData.communicationType === 'email' || formData.communicationType === 'all_channels' || formData.communicationType === 'email_sms' || formData.communicationType === 'email_whatsapp' ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Email Address *
-                  </label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    required={formData.communicationType === 'email' || formData.communicationType === 'all_channels' || formData.communicationType === 'email_sms' || formData.communicationType === 'email_whatsapp'}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="recipient@example.com"
-                  />
-                </div>
-              ) : null}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Sender Email *
+                </label>
+                <input
+                  type="email"
+                  name="senderEmail"
+                  value={formData.senderEmail}
+                  onChange={handleChange}
+                  required
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="your.email@example.com"
+                />
+              </div>
 
               {formData.communicationType !== 'email' ? (
                 <div>

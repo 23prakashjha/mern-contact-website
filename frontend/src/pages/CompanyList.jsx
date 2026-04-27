@@ -14,20 +14,23 @@ const CompanyList = () => {
   const [categories, setCategories] = useState([]);
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [showCityModal, setShowCityModal] = useState(false);
+  const [newCity, setNewCity] = useState('');
+  const [customCities, setCustomCities] = useState([]);
+  const [isCreatingCity, setIsCreatingCity] = useState(false);
+  const [selectedCity, setSelectedCity] = useState('all');
 
-  // India cities list
-  const indiaCities = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad',
-    'Jaipur', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam',
-    'Pimpri-Chinchwad', 'Patna', 'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik',
-    'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivli', 'Vasai-Virar', 'Varanasi',
-    'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
-    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur'
-  ];
+  // Combined cities list (custom cities + cities from company data)
+  const allCities = [...new Set([...customCities, ...companies.filter(c => c.city).map(c => c.city)])].sort();
 
   useEffect(() => {
     fetchCompanies();
     fetchCategories();
+    // Load custom cities from localStorage
+    const savedCities = localStorage.getItem('customCities');
+    if (savedCities) {
+      setCustomCities(JSON.parse(savedCities));
+    }
   }, []);
 
   const fetchCompanies = async () => {
@@ -129,6 +132,62 @@ const CompanyList = () => {
     await assignCompaniesToCategory(categoryName);
   };
 
+  const assignCompaniesToCity = async (cityName) => {
+    try {
+      const companyIds = Array.from(selectedCompanies);
+      await api.post('/api/companies/batch-update-city', {
+        companyIds,
+        city: cityName
+      });
+
+      toast.success(`${companyIds.length} companies assigned to city`);
+      setSelectedCompanies(new Set());
+      fetchCompanies(); // Refresh companies data
+    } catch (error) {
+      console.error('Error assigning companies to city:', error);
+      toast.error('Failed to assign companies to city');
+    }
+  };
+
+  const handleAssignToCity = async (cityName) => {
+    if (selectedCompanies.size === 0) {
+      toast.error('Please select at least one company');
+      return;
+    }
+
+    await assignCompaniesToCity(cityName);
+  };
+
+  const addCustomCity = () => {
+    if (!newCity.trim()) {
+      toast.error('Please enter a city name');
+      return;
+    }
+
+    const trimmedCity = newCity.trim();
+    
+    // Check if city already exists
+    if (allCities.includes(trimmedCity)) {
+      toast.error('City already exists');
+      return;
+    }
+
+    const updatedCities = [...customCities, trimmedCity];
+    setCustomCities(updatedCities);
+    localStorage.setItem('customCities', JSON.stringify(updatedCities));
+    
+    toast.success('City added successfully');
+    setNewCity('');
+    setShowCityModal(false);
+  };
+
+  const removeCustomCity = (cityToRemove) => {
+    const updatedCities = customCities.filter(city => city !== cityToRemove);
+    setCustomCities(updatedCities);
+    localStorage.setItem('customCities', JSON.stringify(updatedCities));
+    toast.success('City removed successfully');
+  };
+
   // Debounced search function
   const debouncedSearch = useCallback(
     debounce((term) => {
@@ -150,6 +209,11 @@ const CompanyList = () => {
     
     // Filter by selected category
     if (selectedCategory !== 'all' && company.category !== selectedCategory) {
+      return false;
+    }
+    
+    // Filter by selected city
+    if (selectedCity !== 'all' && company.city !== selectedCity) {
       return false;
     }
     
@@ -269,6 +333,23 @@ const CompanyList = () => {
               <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
             </div>
             
+            {/* City Filter Dropdown */}
+            <div className="relative">
+              <select
+                value={selectedCity}
+                onChange={(e) => setSelectedCity(e.target.value)}
+                className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Cities</option>
+                {allCities.map((city, index) => (
+                  <option key={index} value={city}>
+                    {city}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 pointer-events-none" />
+            </div>
+            
             <button
               onClick={toggleAllSelection}
               className="flex items-center space-x-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -319,6 +400,13 @@ const CompanyList = () => {
                   <Plus className="w-4 h-4" />
                   <span>New Category</span>
                 </button>
+                <button
+                  onClick={() => setShowCityModal(true)}
+                  className="flex items-center space-x-1 px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Add City</span>
+                </button>
               </div>
             )}
           </div>
@@ -338,6 +426,27 @@ const CompanyList = () => {
                   >
                     <Tag className="w-3 h-3 inline mr-1" />
                     {category}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* City Assignment Buttons */}
+        {selectedCompanies.size > 0 && allCities.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-gray-200">
+            <div className="flex items-center space-x-2">
+              <span className="text-sm text-gray-600">Assign city:</span>
+              <div className="flex flex-wrap gap-2">
+                {allCities.map((city, index) => (
+                  <button
+                    key={index}
+                    onClick={() => handleAssignToCity(city)}
+                    className="px-3 py-1 text-sm bg-blue-100 text-blue-700 rounded-full hover:bg-blue-200 transition-colors"
+                  >
+                    <MapPin className="w-3 h-3 inline mr-1" />
+                    {city}
                   </button>
                 ))}
               </div>
@@ -416,6 +525,79 @@ const CompanyList = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add City Modal */}
+      {showCityModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Add New City</h3>
+              <button
+                onClick={() => setShowCityModal(false)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  City Name
+                </label>
+                <input
+                  type="text"
+                  value={newCity}
+                  onChange={(e) => setNewCity(e.target.value)}
+                  placeholder="Enter city name..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                  onKeyPress={(e) => e.key === 'Enter' && addCustomCity()}
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2">
+                <button
+                  onClick={() => setShowCityModal(false)}
+                  className="px-4 py-2 text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={addCustomCity}
+                  disabled={!newCity.trim()}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Add City
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Cities Management */}
+      {customCities.length > 0 && (
+        <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+          <h3 className="text-lg font-semibold text-gray-900 mb-3">Custom Cities</h3>
+          <div className="flex flex-wrap gap-2">
+            {customCities.map((city, index) => (
+              <div
+                key={index}
+                className="flex items-center space-x-1 px-3 py-1 bg-green-100 text-green-800 rounded-full"
+              >
+                <MapPin className="w-3 h-3" />
+                <span className="text-sm">{city}</span>
+                <button
+                  onClick={() => removeCustomCity(city)}
+                  className="text-green-600 hover:text-green-800"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}

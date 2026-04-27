@@ -28,6 +28,7 @@ const Dashboard = () => {
     city: 'all',
     search: ''
   });
+  const [customCities, setCustomCities] = useState([]);
 
   // Handle manual filter changes
   const handleManualFiltersChange = (filters) => {
@@ -76,16 +77,7 @@ const Dashboard = () => {
     return Array.from(categories).sort();
   };
 
-  // India cities list (same as in other pages)
-  const indiaCities = [
-    'Mumbai', 'Delhi', 'Bangalore', 'Hyderabad', 'Chennai', 'Kolkata', 'Pune', 'Ahmedabad',
-    'Jaipur', 'Lucknow', 'Kanpur', 'Nagpur', 'Indore', 'Thane', 'Bhopal', 'Visakhapatnam',
-    'Pimpri-Chinchwad', 'Patna', 'Vadodara', 'Ghaziabad', 'Ludhiana', 'Agra', 'Nashik',
-    'Faridabad', 'Meerut', 'Rajkot', 'Kalyan-Dombivli', 'Vasai-Virar', 'Varanasi',
-    'Srinagar', 'Aurangabad', 'Dhanbad', 'Amritsar', 'Navi Mumbai', 'Allahabad',
-    'Ranchi', 'Howrah', 'Coimbatore', 'Jabalpur', 'Gwalior', 'Vijayawada', 'Jodhpur'
-  ];
-
+  
   // Fetch companies data with filters and search
   useEffect(() => {
     const fetchCompanies = async () => {
@@ -140,6 +132,14 @@ const Dashboard = () => {
     const debounceTimer = setTimeout(fetchCompanies, 300);
     return () => clearTimeout(debounceTimer);
   }, [manualFilters, pagination.currentPage]);
+
+  // Load custom cities from localStorage
+  useEffect(() => {
+    const savedCities = localStorage.getItem('customCities');
+    if (savedCities) {
+      setCustomCities(JSON.parse(savedCities));
+    }
+  }, []);
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
       {/* Animated Background */}
@@ -246,8 +246,8 @@ const Dashboard = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors bg-white"
             >
               <option value="all">All Cities</option>
-              {indiaCities.map((city) => (
-                <option key={city} value={city}>
+              {customCities.map((city, index) => (
+                <option key={index} value={city}>
                   {city}
                 </option>
               ))}

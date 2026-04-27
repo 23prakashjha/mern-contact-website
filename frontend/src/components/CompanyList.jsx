@@ -438,6 +438,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">S.No</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Company</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">City</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contact</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Address</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
@@ -498,6 +499,19 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                     <Tag className="w-3 h-3 mr-1" />
                     No Category
                   </span>
+                )}
+              </td>
+              <td className="px-4 py-3 text-sm">
+                {company.city && company.city.trim() ? (
+                  <div className="flex items-center gap-1">
+                    <Map className="w-3.5 h-3.5 text-orange-500 flex-shrink-0" />
+                    <span className="text-gray-700 font-medium">{company.city.trim()}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1">
+                    <Map className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-gray-400 italic">No City</span>
+                  </div>
                 )}
               </td>
               <td className="px-4 py-3 text-sm">
