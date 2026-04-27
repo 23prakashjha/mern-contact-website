@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight, Eye, EyeOff, ChevronLeft, ChevronRight as ChevronRightIcon } from 'lucide-react';
+import { Mail, Phone, Globe, MapPin, Calendar, Trash2, Building, MessageCircle, Send, Clock, Tag, Map, ChevronDown, ChevronRight, Eye, EyeOff, ChevronLeft, ChevronRight as ChevronRightIcon, Edit2, Save, X } from 'lucide-react';
 
-const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter = 'all', pagination = {}, onPageChange }) => {
+const CompanyList = ({ companies = [], onDeleteCompany, onUpdateCompany, searchTerm = '', filter = 'all', pagination = {}, onPageChange }) => {
   const [expandedCompanies, setExpandedCompanies] = useState(new Set());
   const [expandedUrls, setExpandedUrls] = useState(new Set());
+  const [editingEmail, setEditingEmail] = useState(null);
+  const [emailValue, setEmailValue] = useState('');
   
   // Ensure pagination is always an object with default values
   const safePagination = pagination || {};
@@ -322,6 +324,46 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
     }
   };
 
+  const handleEditEmail = (companyId, currentEmail) => {
+    setEditingEmail(companyId);
+    setEmailValue(currentEmail || '');
+  };
+
+  const handleSaveEmail = async (companyId) => {
+    try {
+      const response = await fetch(`http://localhost:5000/api/companies/${companyId}/email`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: emailValue.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        // Update company in local state
+        const updatedCompany = { ...data.company, email: emailValue.trim(), updatedAt: new Date() };
+        if (onUpdateCompany) {
+          onUpdateCompany(updatedCompany);
+        }
+      } else {
+        alert(data.error || 'Failed to update email');
+      }
+    } catch (error) {
+      console.error('Error updating email:', error);
+      alert('Failed to update email');
+    }
+    
+    setEditingEmail(null);
+    setEmailValue('');
+  };
+
+  const handleCancelEdit = () => {
+    setEditingEmail(null);
+    setEmailValue('');
+  };
+
   const renderPagination = () => {
     if (!totalPages || totalPages <= 1) return null;
     const maxVisiblePages = 5;
@@ -534,8 +576,33 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                     const correctedEmail = email ? correctEmail(email) : null;
                     const isValid = email && isValidEmail(email);
                     const displayEmail = isValid ? email : correctedEmail;
+                    const isEditing = editingEmail === company._id;
                     
-                    return displayEmail ? (
+                    return isEditing ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="email"
+                          value={emailValue}
+                          onChange={(e) => setEmailValue(e.target.value)}
+                          className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          placeholder="Enter email..."
+                        />
+                        <button
+                          onClick={() => handleSaveEmail(company._id)}
+                          className="inline-flex items-center justify-center w-6 h-6 text-green-600 hover:bg-green-50 rounded transition-colors"
+                          title="Save email"
+                        >
+                          <Save className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={handleCancelEdit}
+                          className="inline-flex items-center justify-center w-6 h-6 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          title="Cancel"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ) : displayEmail ? (
                       <div className="flex items-center gap-1">
                         <Mail className="w-3.5 h-3.5 text-blue-500 flex-shrink-0" />
                         <span className="text-blue-600">
@@ -546,11 +613,25 @@ const CompanyList = ({ companies = [], onDeleteCompany, searchTerm = '', filter 
                             ✓ Fixed
                           </span>
                         )}
+                        <button
+                          onClick={() => handleEditEmail(company._id, displayEmail)}
+                          className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="Edit email"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1">
                         <Mail className="w-3.5 h-3.5 text-gray-400" />
                         <span className="text-gray-400 italic">No Email</span>
+                        <button
+                          onClick={() => handleEditEmail(company._id, '')}
+                          className="inline-flex items-center justify-center w-5 h-5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="Add email"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
                       </div>
                     );
                   })()}

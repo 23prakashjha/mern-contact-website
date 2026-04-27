@@ -945,7 +945,7 @@ class EnhancedWebsiteScraper {
                 });
                 
                 // Wait for potential lazy loading
-                await this.page.waitForTimeout(this.scrollDelay);
+                await new Promise(r => setTimeout(r, this.scrollDelay));
                 
                 previousHeight = currentHeight;
                 scrollAttempts++;
@@ -1082,7 +1082,7 @@ class EnhancedWebsiteScraper {
             });
             
             // Wait a bit for dynamic content
-            await this.page.waitForTimeout(2000);
+            await new Promise(r => setTimeout(r, 2000));
             
             // Scroll to bottom to load all content
             await this.scrollToBottom();
@@ -1106,7 +1106,7 @@ class EnhancedWebsiteScraper {
                             timeout: 20000 
                         });
                         
-                        await this.page.waitForTimeout(1500);
+                        await new Promise(r => setTimeout(r, 1500));
                         await this.scrollToBottom();
                         
                         const contactPageData = await this.extractContactInfoFromPage();
@@ -1114,7 +1114,7 @@ class EnhancedWebsiteScraper {
                         visitedPages.push(contactUrl);
                         
                         // Delay between page navigations
-                        await this.page.waitForTimeout(this.pageDelay);
+                        await new Promise(r => setTimeout(r, this.pageDelay));
                     }
                 } catch (error) {
                     console.error(`Error navigating to contact page ${contactPages[i]}:`, error.message);
@@ -1908,6 +1908,52 @@ app.delete('/api/companies/:id', async (req, res) => {
     }
 });
 
+// Update company email by ID
+app.put('/api/companies/:id/email', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { email } = req.body;
+        
+        // Validate email format
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        if (email && !emailRegex.test(email.trim())) {
+            return res.status(400).json({ 
+                success: false, 
+                error: 'Invalid email format' 
+            });
+        }
+        
+        const company = await Company.findByIdAndUpdate(
+            id, 
+            { 
+                email: email ? email.trim() : '',
+                updatedAt: new Date()
+            }, 
+            { new: true, runValidators: true }
+        );
+        
+        if (!company) {
+            return res.status(404).json({ 
+                success: false, 
+                error: 'Company not found' 
+            });
+        }
+
+        res.json({
+            success: true,
+            message: `Email updated successfully for "${company.company}"`,
+            company: company
+        });
+
+    } catch (error) {
+        console.error('Update email error:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to update email' 
+        });
+    }
+});
+
 // Add a new company
 app.post('/api/companies', async (req, res) => {
     try {
@@ -2050,6 +2096,40 @@ app.post('/api/companies/batch-update', async (req, res) => {
         });
     } catch (error) {
         console.error('Batch update error:', error);
+        res.status(500).json({ error: 'Error updating companies' });
+    }
+});
+
+// Batch update companies (for assigning cities)
+app.post('/api/companies/batch-update-city', async (req, res) => {
+    try {
+        const { companyIds, city } = req.body;
+        
+        if (!companyIds || !Array.isArray(companyIds) || companyIds.length === 0) {
+            return res.status(400).json({ error: 'Company IDs are required' });
+        }
+        
+        if (!city || !city.trim()) {
+            return res.status(400).json({ error: 'City is required' });
+        }
+        
+        // Update all companies with the given IDs
+        const result = await Company.updateMany(
+            { _id: { $in: companyIds } },
+            { city: city.trim(), updatedAt: new Date() }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ error: 'No companies found' });
+        }
+        
+        res.json({ 
+            message: `Updated ${result.modifiedCount} companies`,
+            matchedCount: result.matchedCount,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error('Batch update city error:', error);
         res.status(500).json({ error: 'Error updating companies' });
     }
 });
@@ -3654,6 +3734,2397 @@ app.post('/api/download/google-maps-history', async (req, res) => {
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
 });
+
+// ==================== Justdial Scraper Endpoints ====================
+
+// Helper function to clean category names
+function cleanCategoryName(category) {
+  if (!category) return '';
+  
+  return category
+    .replace(/-/g, ' ')  // Replace hyphens with spaces
+    .replace(/in\s*Sai\s*Kunj/gi, '')  // Remove 'in-Sai-Kunj'
+    .replace(/\s+/g, ' ')  // Replace multiple spaces with single space
+    .replace(/\b\w/g, l => l.toUpperCase())  // Capitalize first letter of each word
+    .trim();
+}
+
+// Enhanced Justdial Scraper Service with Multi-Page Support
+class JustdialScraper {
+  constructor() {
+    this.browser = null;
+    this.page = null;
+  }
+
+  async initialize() {
+    // Add random delay to prevent rate limiting
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 3000));
+    
+    this.browser = await puppeteer.launch({
+      headless: "new",
+      protocolTimeout: 300000,
+      defaultViewport: null,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-default-apps',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-background-networking',
+        '--disable-blink-features=AutomationControlled',
+        '--disable-features=TranslateUI',
+        '--disable-ipc-flooding-protection',
+        '--disable-features=IsolateOrigins,site-per-process',
+        '--disable-site-isolation-trials',
+        '--disable-features=CrossSiteDocumentBlockingIfIsolating',
+        '--disable-features=CrossSiteDocumentBlockingAlways'
+      ]
+    });
+    this.page = await this.browser.newPage();
+    
+    // Enhanced anti-detection script
+    await this.page.evaluateOnNewDocument(() => {
+      // Remove webdriver traces
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+      
+      // Override permissions API
+      const originalQuery = window.navigator.permissions.query;
+      window.navigator.permissions.query = (parameters) => (
+        parameters.name === 'notifications' ?
+          Promise.resolve({ state: Notification.permission }) :
+          originalQuery(parameters)
+      );
+      
+      // Override plugins
+      Object.defineProperty(navigator, 'plugins', {
+        get: () => [
+          {
+            0: { type: "application/x-google-chrome-pdf", suffixes: "pdf", description: "Portable Document Format" },
+            description: "Portable Document Format",
+            filename: "internal-pdf-viewer",
+            length: 1,
+            name: "Chrome PDF Plugin"
+          }
+        ],
+      });
+      
+      // Override languages
+      Object.defineProperty(navigator, 'languages', {
+        get: () => ['en-US', 'en'],
+      });
+      
+      // Override platform
+      Object.defineProperty(navigator, 'platform', {
+        get: () => 'Win32',
+      });
+      
+      // Override chrome object
+      window.chrome = {
+        runtime: {},
+        loadTimes: function() {},
+        csi: function() {},
+        app: {}
+      };
+    });
+    
+    // Set random user agent
+    const userAgent = proxyRotator.getRandomUserAgent();
+    await this.page.setUserAgent(userAgent);
+    
+    // Set random viewport
+    const viewport = proxyRotator.getRandomViewport();
+    await this.page.setViewport(viewport);
+    
+    // Enhanced headers to look more like a real browser
+    await this.page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9,en-GB;q=0.8,en;q=0.7',
+      'Accept-Encoding': 'gzip, deflate, br, zstd',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+      'Cache-Control': 'max-age=0',
+      'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Upgrade-Insecure-Requests': '1',
+      'DNT': '1',
+      'Connection': 'keep-alive'
+    });
+    
+    // Add random human-like delay
+    await new Promise(resolve => setTimeout(resolve, Math.random() * 4000 + 2000));
+  }
+
+  async scrapeBusinessData(url, detectedCategory = '') {
+    try {
+      await this.initialize();
+      
+      // Store detected category globally for use in extraction
+      if (detectedCategory) {
+        await this.page.evaluate((category) => {
+          window.detectedCategory = category;
+        }, detectedCategory);
+      }
+      
+      console.log('Navigating to URL:', url);
+      
+      // Add initial delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 6000 + 4000));
+      
+      // Enhanced navigation with multiple attempts
+      let accessDenied = true;
+      let attempts = 0;
+      const maxAttempts = 5;
+      
+      while (accessDenied && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Attempt ${attempts} of ${maxAttempts}`);
+        
+        try {
+          if (attempts > 1) {
+            console.log('Waiting before retry to prevent rate limiting...');
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 10000 + 8000));
+          }
+          
+          // Navigate with different wait strategies
+          if (attempts === 1) {
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+          } else if (attempts === 2) {
+            await this.page.goto(url, { waitUntil: 'networkidle0', timeout: 45000 });
+          } else {
+            await this.page.goto(url, { waitUntil: 'load', timeout: 60000 });
+          }
+          
+          // Wait for content to load
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 5000 + 3000));
+          
+          // Check for access denied
+          const pageTitle = await this.page.title();
+          const pageContent = await this.page.content();
+          
+          console.log('Page title:', pageTitle);
+          console.log('Current URL:', this.page.url());
+          
+          accessDenied = 
+            pageTitle.includes('Access Denied') ||
+            pageTitle.includes('403') ||
+            pageTitle.includes('Blocked') ||
+            pageTitle.includes('Robot Check') ||
+            pageTitle.includes('CAPTCHA') ||
+            pageTitle.includes('Security Check') ||
+            pageTitle.includes('Too Many Requests') ||
+            pageContent.includes('Access Denied') ||
+            pageContent.includes('403 Forbidden') ||
+            pageContent.includes('captcha') ||
+            pageContent.includes('robot') ||
+            pageContent.includes('security check') ||
+            pageContent.includes('rate limit') ||
+            pageContent.includes('too many requests') ||
+            pageContent.includes('cloudflare') ||
+            pageContent.includes('challenge');
+          
+          if (accessDenied) {
+            console.log('Access denied/rate limited detected, trying different approach...');
+            
+            if (attempts === 1) {
+              await this.page.evaluate(() => {
+                window.scrollTo(0, Math.floor(Math.random() * 500));
+                document.dispatchEvent(new MouseEvent('mousemove', {
+                  clientX: Math.random() * window.innerWidth,
+                  clientY: Math.random() * window.innerHeight
+                }));
+              });
+              await new Promise(resolve => setTimeout(resolve, 3000));
+              await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 45000 });
+            }
+          } else {
+            console.log('Successfully accessed the page!');
+            break;
+          }
+          
+        } catch (error) {
+          console.log(`Navigation attempt ${attempts} failed:`, error.message);
+          if (attempts >= maxAttempts) {
+            throw error;
+          }
+        }
+      }
+      
+      if (accessDenied) {
+        console.log('Still getting access denied after all attempts, attempting to extract anyway...');
+        try {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        } catch (e) {
+          console.log('Wait timeout, proceeding anyway...');
+        }
+      }
+      
+      // Use the new pagination handler to get all businesses
+      console.log('Starting pagination-aware scraping...');
+      const businessData = await this.handlePagination();
+      
+      // If no businesses found with pagination, try the old method as fallback
+      if (businessData.length === 0) {
+        console.log('No businesses found with pagination, trying fallback method...');
+        await this.enhancedAutoScroll();
+        const fallbackData = await this.extractBusinessesFromCurrentPage();
+        return fallbackData;
+      }
+    
+      console.log(`Found ${businessData.length} businesses`);
+      
+      // If no businesses found with specific selectors, try generic approach
+      if (businessData.length === 0) {
+        console.log('Trying generic data extraction approach...');
+        const genericData = await this.extractGenericData();
+        console.log(`Generic approach found ${genericData.length} businesses`);
+        return genericData;
+      }
+    
+      return businessData;
+    
+    } catch (error) {
+      console.error('Scraping error:', error);
+      
+      if (error.message.includes('Runtime.callFunctionOn timed out') || 
+          error.message.includes('protocolTimeout')) {
+        console.log('Timeout error detected, attempting graceful recovery...');
+        throw new Error(`Scraping timeout: The page took too long to respond. Please try again in a few minutes.`);
+      }
+      
+      if (error.message.includes('net::ERR_') || error.message.includes('Navigation timeout')) {
+        throw new Error(`Network error: Unable to reach the website. Please check your internet connection and try again.`);
+      }
+      
+      throw new Error(`Failed to scrape data: ${error.message}`);
+    } finally {
+      await this.close();
+    }
+  }
+
+  async handlePagination() {
+    console.log('Checking for pagination and loading more results...');
+    
+    let allBusinesses = [];
+    let currentPage = 1;
+    const maxPages = 50; // Limit to prevent infinite loops
+    let loadMoreFound = true;
+    
+    while (loadMoreFound && currentPage <= maxPages) {
+      console.log(`=== PROCESSING PAGE ${currentPage} COMPLETELY ===`);
+      
+      // Step 1: Wait for initial content to load
+      console.log(`Page ${currentPage}: Waiting for initial content to load...`);
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      
+      // Step 2: Scroll to end of page to trigger ALL lazy loading
+      console.log(`Page ${currentPage}: Scrolling to end to load ALL businesses...`);
+      await this.scrollToEndOfPage();
+      
+      // Step 3: Extract ALL businesses from current page
+      console.log(`Page ${currentPage}: Extracting ALL businesses from this page...`);
+      const pageBusinesses = await this.extractBusinessesFromCurrentPage();
+      console.log(`Page ${currentPage}: Found ${pageBusinesses.length} businesses`);
+      
+      // Step 4: Add all businesses from this page to our collection
+      console.log(`Page ${currentPage}: Adding ${pageBusinesses.length} businesses to collection...`);
+      allBusinesses.push(...pageBusinesses);
+      console.log(`Page ${currentPage}: Total businesses so far: ${allBusinesses.length}`);
+      
+      // Step 5: Check if there are more pages to process
+      console.log(`Page ${currentPage}: Looking for next page or load more button...`);
+      loadMoreFound = await this.page.evaluate(() => {
+        // Look for "Load More" button
+        const loadMoreSelectors = [
+          'button[class*="load"]',
+          'button[class*="more"]',
+          'a[class*="load"]',
+          'a[class*="more"]',
+          'div[class*="load"] button',
+          'div[class*="more"] button',
+          '.load-more',
+          '.show-more',
+          '.view-more',
+          '[data-testid*="load"]',
+          '[data-testid*="more"]'
+        ];
+        
+        for (const selector of loadMoreSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.toLowerCase() || '';
+            if (text.includes('load') || text.includes('more') || text.includes('view')) {
+              console.log(`Found load more element: ${selector} - "${text}"`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              element.click();
+              return true;
+            }
+          }
+        }
+        
+        // Look for pagination links
+        const paginationSelectors = [
+          'a[href*="page-"]',
+          'a[class*="page"]',
+          'li[class*="page"] a',
+          '.pagination a',
+          '[data-testid*="page"]'
+        ];
+        
+        for (const selector of paginationSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.trim() || '';
+            const href = element.getAttribute('href') || '';
+            
+            // Look for next page link
+            if ((text.includes('Next') || text.includes('>') || href.includes('page-')) && 
+                !text.includes('Previous') && !text.includes('<')) {
+              console.log(`Found pagination link: ${selector} - "${text}" - ${href}`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              element.click();
+              return true;
+            }
+          }
+        }
+        
+        return false;
+      });
+      
+      // Step 6: Move to next page if available
+      if (loadMoreFound) {
+        console.log(`Page ${currentPage}: Moving to next page...`);
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait for new content to load
+        currentPage++;
+        console.log(`=== PAGE ${currentPage - 1} COMPLETED ===`);
+      } else {
+        console.log(`Page ${currentPage}: No more pages found - scraping complete`);
+        console.log(`=== PAGE ${currentPage} COMPLETED - NO MORE PAGES ===`);
+      }
+    }
+    
+    console.log(`Total pages processed: ${currentPage - 1}`);
+    console.log(`Total businesses found: ${allBusinesses.length}`);
+    
+    return allBusinesses;
+  }
+
+  async scrollToEndOfPage() {
+    console.log('Scrolling to end of page to trigger lazy loading...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 5; // Reduced for faster processing
+        const maxScrollAttempts = 20; // Reduced for faster processing
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          // Scroll in smaller increments for better content detection
+          const scrollStep = Math.min(window.innerHeight, 800);
+          window.scrollBy(0, scrollStep);
+          totalHeight += scrollStep;
+          scrollAttempts++;
+          
+          // Check if new content has loaded
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          // Enhanced stopping conditions
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 100;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Page scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            // Wait for any remaining lazy-loaded content
+            setTimeout(() => {
+              // Scroll back to top to ensure all content is accessible
+              window.scrollTo(0, 0);
+              
+              // Trigger any scroll-based lazy loading at the top
+              setTimeout(() => {
+                window.scrollTo(0, 100);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(resolve, 1000);
+                }, 500);
+              }, 500);
+            }, 2000);
+          }
+        }, 500); // Faster scrolling for pagination
+      });
+    });
+  }
+
+  async enhancedAutoScroll() {
+    console.log('Starting enhanced automatic scrolling for dynamic content...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 10;
+        const maxScrollAttempts = 40;
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          const scrollStep = Math.min(window.innerHeight, 600);
+          window.scrollBy(0, scrollStep);
+          totalHeight += scrollStep;
+          scrollAttempts++;
+          
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 200;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Enhanced scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            setTimeout(() => {
+              window.scrollTo(0, 0);
+              
+              setTimeout(() => {
+                window.scrollTo(0, 200);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(resolve, 2000);
+                }, 1000);
+              }, 1000);
+            }, 4000);
+          }
+        }, 400);
+      });
+    });
+  }
+
+  async extractBusinessesFromCurrentPage() {
+    return await this.page.evaluate(async () => {
+      try {
+        console.log('=== EXTRACTING BUSINESSES FROM CURRENT PAGE ===');
+        console.log('Current URL:', window.location.href);
+        console.log('Page title:', document.title);
+        console.log('Total elements on page:', document.querySelectorAll('*').length);
+        
+        // Log page content sample for debugging
+        const bodyText = document.body?.textContent || '';
+        console.log('Page content length:', bodyText.length);
+        console.log('Page content sample (first 500 chars):', bodyText.substring(0, 500));
+        
+        // Check if page has phone numbers at all
+        const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+        const phoneMatches = bodyText.match(phoneRegex);
+        console.log('Phone numbers found on page:', phoneMatches ? phoneMatches.length : 0);
+        if (phoneMatches) {
+          console.log('Sample phone numbers:', phoneMatches.slice(0, 3));
+        }
+        
+        const businesses = [];
+        
+        // Use comprehensive selectors
+        let listings = [];
+        
+        const possibleSelectors = [
+          '.resultbox',
+          '[data-testid="result-card"]',
+          '.jsx-2622435384',
+          '.result-card',
+          '.listing-container',
+          '.jsx-3788266411',
+          'div[class*="jsx"]:has(h2)',
+          'div[class*="jsx"]:has(h3)',
+          'div[class*="result"]',
+          'div[class*="listing"]',
+          'div[class*="card"]',
+          'div[class*="business"]',
+          'div[class*="company"]',
+          'div[class*="store"]',
+          'div[class*="service"]',
+          'div[class*="vendor"]',
+          'div[class*="provider"]',
+          'article',
+          'section[class*="result"]',
+          'li[class*="result"]',
+          'div[class*="item"]',
+          'div[class*="entry"]',
+          'div[class*="contact"]:has([class*="phone"])',
+          'div[class*="info"]:has([class*="phone"])',
+          // Enhanced Justdial-specific selectors
+          'div[class*="jsx-"]:has([class*="phone"])',
+          'div[class*="jsx-"]:has([class*="tel"])',
+          'div[class*="jsx-"]:has(a[href*="tel:"])',
+          'div[class*="jsx-"]:has(span[title*="Call"])',
+          'div[class*="jsx-"]:has(div[title*="Call"])',
+          'div[class*="jsx-"]:has([data-testid*="phone"])',
+          'div[class*="jsx-"]:has([data-testid*="contact"])',
+          'div[class*="jsx-"]:has([class*="contact"])',
+          // More generic selectors for dynamic content
+          'div[class*="-"]:has(h2, h3, h4)',
+          'div[class*="-"]:has(.phone, .tel, .mobile)',
+          'div[class*="-"]:has(a[href*="tel:"])',
+          'section:has(h2, h3, h4)',
+          'article:has(h2, h3, h4)',
+          'li:has(h2, h3, h4)',
+          'li:has(.phone, .tel, .mobile)',
+          'li:has(a[href*="tel:"])'
+        ];
+        
+        // Try to find common Justdial class patterns by inspecting current page
+        const allDivs = document.querySelectorAll('div');
+        const jsxClasses = new Set();
+        allDivs.forEach(div => {
+          const className = div.className || '';
+          if (className.includes('jsx-')) {
+            jsxClasses.add(className);
+          }
+        });
+        console.log('Found jsx classes:', Array.from(jsxClasses).slice(0, 10));
+        
+        for (const selector of possibleSelectors) {
+          try {
+            const found = document.querySelectorAll(selector);
+            console.log(`Selector "${selector}": found ${found.length} elements`);
+            if (found.length > 0) {
+              listings = found;
+              console.log(`Using selector: ${selector} with ${found.length} listings`);
+              
+              // Log sample listing structure
+              if (listings.length > 0) {
+                const sampleListing = listings[0];
+                console.log('Sample listing tag:', sampleListing.tagName);
+                console.log('Sample listing classes:', sampleListing.className);
+                console.log('Sample listing content (first 200 chars):', sampleListing.textContent?.substring(0, 200));
+              }
+              break;
+            }
+          } catch (error) {
+            console.log(`Error with selector "${selector}": ${error.message}`);
+          }
+        }
+        
+        // Fallback: phone-based approach
+        if (listings.length === 0) {
+          console.log('Trying phone-based approach...');
+          const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+          const allElements = document.querySelectorAll('*');
+          const phoneElements = [];
+          let phoneElementCount = 0;
+          
+          console.log(`Total elements to check: ${allElements.length}`);
+          
+          allElements.forEach((element, index) => {
+            if (!element) return;
+            const text = element.textContent || '';
+            if (phoneRegex.test(text)) {
+              phoneElementCount++;
+              console.log(`Found phone in element ${index}: ${element.tagName}.${element.className} - Text: "${text.substring(0, 100)}..."`);
+              
+              let parent = element;
+              for (let i = 0; i < 8; i++) { // Increased from 5 to 8
+                if (parent && parent.tagName === 'BODY') break;
+                
+                const parentText = parent.textContent || '';
+                const hasPhone = phoneRegex.test(parentText);
+                const hasBusinessKeywords = /business|company|store|shop|service|electrician|doctor|restaurant|hotel|clinic|hospital|school|college|bank|atm|pharmacy|gas|petrol|food|cafe|travel|agency|repair|cleaning|security|insurance|real|estate|construction|transport|logistics|warehouse|factory|manufacturing|supplier|distributor|wholesale|retail|dealer|showroom|gallery|studio|salon|spa|fitness|gym|sports|education|training|consulting|legal|accounting|tax|finance|investment|loan|credit|card|money|exchange|currency|jewelry|clothing|fashion|electronics|mobile|computer|laptop|printer|furniture|home|decor|kitchen|bathroom|garden|automobile|bike|car|motorcycle|parts|accessories|tire|battery|oil|service|repair|maintenance|washing|dry|cleaning|laundry|pest|control|security|guard|surveillance|camera|lock|key|door|window|glass|ac|cooler|heater|fan|light|electrical|plumbing|sanitary|paint|color|design|interior|exterior|floor|roof|wall|tile|marble|granite|wood|steel|iron|aluminum|copper|brass|plastic|rubber|paper|printing|packaging|label|sticker|sign|board|banner|advertising|marketing|promotion|event|wedding|party|catering|photography|video|music|dance|art|craft|gift|toy|book|stationery|office|school|college|university|institute|academy|library|hospital|clinic|medical|dental|eye|skin|hair|beauty|salon|spa|massage|therapy|fitness|gym|yoga|meditation|spiritual|religious|temple|church|mosque|gurudwara|ashram|charity|trust|ngo|social|community|government|public|private|corporate|multinational|international|import|export|trade|commerce|business|industry|agriculture|farming|dairy|poultry|fishery|horticulture|florist|nursery|landscaping|gardening|lawn|tree|plant|seed|fertilizer|pesticide|insecticide|herbicide|irrigation|water|tank|pump|pipe|motor|generator|solar|energy|power|electricity|fuel|gas|oil|coal|mineral|mining|quarry|stone|sand|cement|concrete|brick|block|tile|marble|granite|slate|wood|timber|plyboard|laminate|vinyl|carpet|fabric|leather|foam|mattress|pillow|blanket|curtain|blind|shutter|door|window|glass|mirror|frame|picture|hanging|decoration|ornament|lamp|light|bulb|tube|led|cfl|halogen|incandescent|fluorescent|neon|laser|projector|screen|television|tv|lcd|led|plasma|oled|smart|android|ios|apple|samsung|lg|sony|panasonic|philips|toshiba|hp|dell|lenovo|asus|acer|microsoft|google|amazon|flipkart|snapdeal|paytm|phonepe|googlepay|whatsapp|facebook|instagram|twitter|youtube|linkedin|email|internet|wifi|broadband|network|server|computer|laptop|desktop|tablet|mobile|smartphone|iphone|android|windows|mac|linux|software|hardware|app|application|website|development|design|hosting|domain|server|cloud|storage|backup|security|antivirus|firewall|vpn|proxy|router|modem|switch|hub|cable|wireless|bluetooth|usb|hdmi|vga|audio|video|camera|printer|scanner|copier|fax|shredder|binding|lamination|stationery|pen|pencil|paper|notebook|file|folder|envelope|stamp|courier|post|mail|letter|document|certificate|license|permit|registration|passport|visa|ticket|booking|reservation|hotel|restaurant|food|catering|delivery|transport|travel|tour|holiday|vacation|picnic|camping|adventure|sports|game|play|entertainment|movie|cinema|theater|concert|show|exhibition|museum|art|gallery|park|garden|zoo|aquarium|amusement|fair|festival|celebration|party|wedding|birthday|anniversary|graduation|retirement|funeral|memorial|religious|spiritual|meditation|yoga|fitness|gym|health|wellness|medical|hospital|clinic|doctor|nurse|pharmacy|medicine|drug|tablet|capsule|injection|surgery|operation|treatment|therapy|rehabilitation|physiotherapy|dental|eye|ear|nose|throat|skin|hair|beauty|salon|spa|massage|wellness|fitness|gym|yoga|meditation|spiritual|religious|temple|church|mosque|gurudwara|ashram|charity|trust|ngo|social|community|government|public|private|corporate|multinational|international|import|export|trade|commerce|business|industry|agriculture|farming|dairy|poultry|fishery|horticulture|florist|nursery|landscaping|gardening|lawn|tree|plant|seed|fertilizer|pesticide|insecticide|herbicide|irrigation|water|tank|pump|pipe|motor|generator|solar|energy|power|electricity|fuel|gas|oil|coal|mineral|mining|quarry|stone|sand|cement|concrete|brick|block|tile|marble|granite|slate|wood|timber|plyboard|laminate|vinyl|carpet|fabric|leather|foam|mattress|pillow|blanket|curtain|blind|shutter|door|window|glass|mirror|frame|picture|hanging|decoration|ornament|lamp|light|bulb|tube|led|cfl|halogen|incandescent|fluorescent|neon|laser|projector|screen|television|tv|lcd|led|plasma|oled|smart|android|ios|apple|samsung|lg|sony|panasonic|philips|toshiba|hp|dell|lenovo|asus|acer|microsoft|google|amazon|flipkart|snapdeal|paytm|phonepe|googlepay|whatsapp|facebook|instagram|twitter|youtube|linkedin|email|internet|wifi|broadband|network|server|computer|laptop|desktop|tablet|mobile|smartphone|iphone|android|windows|mac|linux|software|hardware|app|application|website|development|design|hosting|domain|server|cloud|storage|backup|security|antivirus|firewall|vpn|proxy|router|modem|switch|hub|cable|wireless|bluetooth|usb|hdmi|vga|audio|video|camera|printer|scanner|copier|fax|shredder|binding|lamination|stationery|pen|pencil|paper|notebook|file|folder|envelope|stamp|courier|post|mail|letter|document|certificate|license|permit|registration|passport|visa|ticket|booking|reservation|hotel|restaurant|food|catering|delivery|transport|travel|tour|holiday|vacation|picnic|camping|adventure|sports|game|play|entertainment|movie|cinema|theater|concert|show|exhibition|museum|art|gallery|park|garden|zoo|aquarium|amusement|fair|festival|celebration|party|wedding|birthday|anniversary|graduation|retirement|funeral|memorial|religious|spiritual|meditation|yoga|fitness|gym|health|wellness|medical|hospital|clinic|doctor|nurse|pharmacy|medicine|drug|tablet|capsule|injection|surgery|operation|treatment|therapy|rehabilitation|physiotherapy|dental|eye|ear|nose|throat|skin|hair|beauty|salon|spa|massage|wellness|fitness|gym|yoga|meditation|spiritual|religious|temple|church|mosque|gurudwara|ashram|charity|trust|ngo|social|community|government|public|private|corporate|multinational|international|import|export|trade|commerce|business|industry|agriculture|farming|dairy|poultry|fishery|horticulture|florist|nursery|landscaping|gardening|lawn|tree|plant|seed|fertilizer|pesticide|insecticide|herbicide|irrigation|water|tank|pump|pipe|motor|generator|solar|energy|power|electricity|fuel|gas|oil|coal|mineral|mining|quarry|stone|sand|cement|concrete|brick|block|tile|marble|granite|slate|wood|timber|plyboard|laminate|vinyl|carpet|fabric|leather|foam|mattress|pillow|blanket|curtain|blind|shutter|door|window|glass|mirror|frame|picture|hanging|decoration|ornament|lamp|light|bulb|tube|led|cfl|halogen|incandescent|fluorescent|neon|laser|projector|screen|television|tv|lcd|led|plasma|oled|smart|android|ios|apple|samsung|lg|sony|panasonic|philips|toshiba|hp|dell|lenovo|asus|acer|microsoft|google|amazon|flipkart|snapdeal|paytm|phonepe|googlepay|whatsapp|facebook|instagram|twitter|youtube|linkedin|email|internet|wifi|broadband|network|server|computer|laptop|desktop|tablet|mobile|smartphone|iphone|android|windows|mac|linux|software|hardware|app|application|website|development|design|hosting|domain|server|cloud|storage|backup|security|antivirus|firewall|vpn|proxy|router|modem|switch|hub|cable|wireless|bluetooth|usb|hdmi|vga|audio|video|camera|printer|scanner|copier|fax|shredder|binding|lamination|stationery|pen|pencil|paper|notebook|file|folder|envelope|stamp|courier|post|mail|letter|document|certificate|license|permit|registration|passport|visa|ticket|booking|reservation|hotel|restaurant|food|catering|delivery|transport|travel|tour|holiday|vacation|picnic|camping|adventure|sports|game|play|entertainment|movie|cinema|theater|concert|show|exhibition|museum|art|gallery|park|garden|zoo|aquarium|amusement|fair|festival|celebration|party|wedding|birthday|anniversary|graduation|retirement|funeral|memorial/i.test(parentText);
+                
+                if (hasPhone && hasBusinessKeywords && parentText.length > 20 && parentText.length < 1000) { // Increased max length
+                  console.log(`  -> Found business element at level ${i}: ${parent.tagName}.${parent.className} - Length: ${parentText.length}`);
+                  phoneElements.push(parent);
+                  break;
+                }
+                
+                parent = parent.parentElement;
+              }
+            }
+          });
+          
+          console.log(`Phone-based approach: checked ${phoneElementCount} phone elements, found ${phoneElements.length} business elements`);
+          
+          const uniquePhoneElements = [...new Set(phoneElements)];
+          listings = uniquePhoneElements;
+          console.log(`Phone-based approach found ${listings.length} unique elements`);
+        }
+        
+        // Final fallback: Look for any elements that might contain business information
+        if (listings.length === 0) {
+          console.log('Trying final fallback approach - looking for any business-related elements...');
+          const fallbackElements = [];
+          const allElements = document.querySelectorAll('*');
+          
+          allElements.forEach((element, index) => {
+            const text = element.textContent || '';
+            const hasPhone = phoneRegex.test(text);
+            const hasBusinessName = /\b[A-Z][a-z]+\s+(?:[A-Z][a-z]+\s+)?(?:[A-Z][a-z]+|&|and|the)\b|\b(?:[A-Z][a-z]+\s+){1,3}(?:Shop|Store|Service|Center|Centre|Clinic|Hospital|School|College|Bank|ATM|Pharmacy|Hotel|Restaurant|Cafe|Bar|Club|Gym|Salon|Spa|Studio|Office|Agency|Company|Firm|Ltd|Pvt|Inc|Corp|LLC)\b/i.test(text);
+            const hasAddress = /\d+\s+[A-Za-z]+\s+(?:Road|Street|Lane|Avenue|Boulevard|Nagar|Colony|Sector|Block|Plot|Shop|Floor|Building|Tower|Complex|Market|Area|Zone|Pin|Post|Near|Behind|Opposite|Above|Below|Next|to|From|At|In|On)\b/i.test(text);
+            
+            if (hasPhone && (hasBusinessName || hasAddress) && text.length > 50 && text.length < 800) {
+              console.log(`Fallback found element ${index}: ${element.tagName}.${element.className} - Has phone: ${hasPhone}, Has business name: ${hasBusinessName}, Has address: ${hasAddress}`);
+              fallbackElements.push(element);
+            }
+          });
+          
+          listings = [...new Set(fallbackElements)];
+          console.log(`Final fallback approach found ${listings.length} elements`);
+        }
+        
+        console.log('=== PROCESSING LISTINGS ===');
+        
+        for (const [index, listing] of listings.entries()) {
+          try {
+            console.log(`Processing listing ${index}:`, listing.tagName, listing.className);
+            
+            const business = {
+              name: '',
+              phone: '',
+              address: '',
+              category: '',
+              city: '',
+              image: ''
+            };
+            
+            // Extract Name
+            const nameSelectors = [
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              '.title', '.name', '[class*="name"]', 
+              '.company-name', '.store-name', '.business-name',
+              '.vendor-name', '.service-name', '.provider-name',
+              'span[class*="title"]', 'div[class*="title"]',
+              'a[class*="title"]', 'strong[class*="title"]',
+              '.resultbox h1', '.resultbox h2', '.resultbox h3',
+              '[data-testid*="name"]', '[class*="jsx"] h2', '[class*="jsx"] h3',
+              'b', 'strong', '.highlight', '.featured'
+            ];
+            
+            for (const selector of nameSelectors) {
+              const element = listing.querySelector(selector);
+              if (element) {
+                const text = element.textContent?.trim() || '';
+                const textLower = text.toLowerCase();
+                
+                // Enhanced validation for business names
+                const isValidBusinessName = text.length > 2 && text.length < 150 && 
+                    !/^\d+$/.test(text) && 
+                    !textLower.includes('ad') &&
+                    !textLower.includes('sponsored') &&
+                    !textLower.includes('promotion') &&
+                    !textLower.includes('advertisement') &&
+                    !text.match(/^(call|contact|phone|mobile)$/i) &&
+                    // Additional filters for common UI text
+                    !textLower.includes('photos') &&
+                    !textLower.includes('get the list') &&
+                    !textLower.includes('skip to main content') &&
+                    !textLower.includes('main content') &&
+                    !textLower.includes('navigation') &&
+                    !textLower.includes('search') &&
+                    !textLower.includes('filter') &&
+                    !textLower.includes('sort') &&
+                    !textLower.includes('category') &&
+                    !textLower.includes('location') &&
+                    !textLower.includes('direction') &&
+                    !textLower.includes('map') &&
+                    !textLower.includes('review') &&
+                    !textLower.includes('rating') &&
+                    !textLower.includes('contact') &&
+                    !textLower.includes('about') &&
+                    !textLower.includes('services') &&
+                    !textLower.includes('products') &&
+                    !textLower.includes('website') &&
+                    !textLower.includes('email') &&
+                    !textLower.includes('address') &&
+                    !textLower.includes('hours') &&
+                    !textLower.includes('timing') &&
+                    !textLower.includes('open') &&
+                    !textLower.includes('closed') &&
+                    !textLower.includes('book') &&
+                    !textLower.includes('appointment') &&
+                    !textLower.includes('book appointment') &&
+                    !textLower.includes('enquiry') &&
+                    !textLower.includes('details') &&
+                    !textLower.includes('information') &&
+                    !textLower.includes('description') &&
+                    !textLower.includes('features') &&
+                    !textLower.includes('amenities') &&
+                    !textLower.includes('facilities') &&
+                    // Filter out comma-separated UI elements
+                    !(textLower.includes(',') && (
+                      textLower.includes('photos') ||
+                      textLower.includes('get the') ||
+                      textLower.includes('skip to') ||
+                      textLower.includes('main content') ||
+                      textLower.includes('list of') ||
+                      textLower.includes('content') ||
+                      textLower.includes('search') ||
+                      textLower.includes('filter') ||
+                      textLower.includes('sort') ||
+                      textLower.includes('category') ||
+                      textLower.includes('location') ||
+                      textLower.includes('direction') ||
+                      textLower.includes('map') ||
+                      textLower.includes('review') ||
+                      textLower.includes('rating') ||
+                      textLower.includes('contact') ||
+                      textLower.includes('about') ||
+                      textLower.includes('services') ||
+                      textLower.includes('products') ||
+                      textLower.includes('website') ||
+                      textLower.includes('email') ||
+                      textLower.includes('address') ||
+                      textLower.includes('hours') ||
+                      textLower.includes('timing') ||
+                      textLower.includes('open') ||
+                      textLower.includes('closed') ||
+                      textLower.includes('book') ||
+                      textLower.includes('appointment') ||
+                      textLower.includes('book appointment') ||
+                      textLower.includes('enquiry') ||
+                      textLower.includes('details') ||
+                      textLower.includes('information') ||
+                      textLower.includes('description') ||
+                      textLower.includes('features') ||
+                      textLower.includes('amenities') ||
+                      textLower.includes('facilities')
+                    )) &&
+                    // Filter out names that start with common UI words
+                    !textLower.match(/^(photos|get|skip|main|content|search|filter|sort|category|location|direction|map|review|rating|contact|about|services|products|website|email|address|hours|timing|open|closed|book|appointment|book appointment|enquiry|details|information|description|features|amenities|facilities)/);
+                
+                if (isValidBusinessName) {
+                  business.name = text;
+                  console.log(`  -> Name found via "${selector}": "${text}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Extract Phone
+            const phoneSelectors = [
+              // Most common Justdial phone selectors (2024 updated)
+              '.contact-info .tel-number',
+              '.phone-number', '.tel-number', '.mobile-number',
+              '[data-testid="phone-number"]', '[data-testid*="phone"]',
+              '[class*="phone"]', 'a[href*="tel:"]',
+              '[class*="contact"] [class*="phone"]',
+              '[class*="tel"]', '[class*="mobile"]',
+              '.resultbox .phone', '.resultbox .tel', '.resultbox .mobile',
+              'span[class*="phone"]', 'div[class*="phone"]',
+              '.call-info', '.contact-details', '.vendor-phone',
+              
+              // Enhanced Justdial-specific phone selectors (2024 patterns)
+              'div[class*="jsx-"] [class*="phone"]',
+              'div[class*="jsx-"] [class*="tel"]',
+              'div[class*="jsx-"] [class*="mobile"]',
+              'div[class*="jsx-"] a[href*="tel:"]',
+              'div[class*="jsx-"] [data-testid*="phone"]',
+              'div[class*="jsx-"] span[title*="Call"]',
+              'div[class*="jsx-"] div[title*="Call"]',
+              'div[class*="jsx-"] [data-testid*="contact"]',
+              'div[class*="jsx-"] [class*="contact"]',
+              
+              // New 2024 Justdial patterns
+              'span[onclick*="tel:"]',
+              'div[onclick*="tel:"]',
+              'button[onclick*="tel:"]',
+              '.callnow',
+              '.call-btn',
+              '.phone-btn',
+              '.mobile-btn',
+              '[class*="callnow"]',
+              '[class*="call-btn"]',
+              '[class*="phone-btn"]',
+              '[class*="mobile-btn"]',
+              
+              // Justdial specific data attributes
+              '[data-phone]',
+              '[data-mobile]',
+              '[data-contact]',
+              '[data-tel]',
+              
+              // Generic phone selectors
+              '[title*="Call"]', '[title*="Phone"]', '[title*="Mobile"]',
+              '[aria-label*="Call"]', '[aria-label*="Phone"]', '[aria-label*="Mobile"]',
+              'a[onclick*="tel:"]',
+              'span[data-phone]', 'div[data-phone]',
+              
+              // Fallback: any element containing phone-like text
+              '*'
+            ];
+            
+            const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/;
+            
+            // Helper function to format phone number to standard 10-digit Indian format
+            function formatPhoneNumber(phoneNumber) {
+              let cleanPhone = phoneNumber.replace(/\D/g, '');
+              
+              // Handle different phone number formats
+              if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+                // International format: +91XXXXXXXXXX
+                cleanPhone = cleanPhone.substring(2);
+              } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+                // National format: 0XXXXXXXXXX
+                cleanPhone = cleanPhone.substring(1);
+              } else if (cleanPhone.length === 11 && cleanPhone.startsWith('91')) {
+                // Another international format: 91XXXXXXXXXX
+                cleanPhone = cleanPhone.substring(2);
+              }
+              
+              // Validate that we have a 10-digit number starting with 6-9 (Indian mobile)
+              if (cleanPhone.length === 10 && /^[6-9]\d{9}$/.test(cleanPhone)) {
+                return cleanPhone;
+              }
+              
+              return null; // Invalid phone number
+            }
+            
+            console.log(`  -> DEBUG: Extracting phone from listing ${index}`);
+            
+            for (const selector of phoneSelectors) {
+              try {
+                const element = listing.querySelector(selector);
+                if (element) {
+                  const phoneText = element.textContent?.trim() || '';
+                  const phoneMatch = phoneText.match(phoneRegex);
+                  console.log(`  -> DEBUG: Found element with selector "${selector}": "${phoneText}"`);
+                  
+                  if (phoneMatch) {
+                    const formattedPhone = formatPhoneNumber(phoneMatch[0]);
+                    if (formattedPhone) {
+                      business.phone = formattedPhone;
+                      console.log(`  -> SUCCESS: Phone from "${selector}": "${phoneMatch[0]}" -> "${formattedPhone}"`);
+                      break;
+                    } else {
+                      console.log(`  -> FAILED: Phone format invalid: "${phoneMatch[0]}"`);
+                    }
+                  }
+                }
+              } catch (error) {
+                console.log(`  -> ERROR with selector "${selector}": ${error.message}`);
+              }
+            }
+            
+            // Fallback: extract phone from listing text
+            if (!business.phone) {
+              console.log(`  -> DEBUG: Trying fallback phone extraction from listing text`);
+              const listingText = listing.textContent || '';
+              console.log(`  -> DEBUG: Listing text (first 200 chars): "${listingText.substring(0, 200)}..."`);
+              const phoneMatches = listingText.match(phoneRegex);
+              console.log(`  -> DEBUG: Phone matches in text: ${phoneMatches ? phoneMatches.length : 0}`);
+              
+              if (phoneMatches) {
+                for (const phone of phoneMatches) {
+                  const formattedPhone = formatPhoneNumber(phone);
+                  if (formattedPhone) {
+                    business.phone = formattedPhone;
+                    console.log(`  -> SUCCESS: Phone from text: "${phone}" -> "${formattedPhone}"`);
+                    break;
+                  } else {
+                    console.log(`  -> FAILED: Invalid phone format from text: "${phone}"`);
+                  }
+                }
+              }
+            }
+            
+            // Additional fallback: Try to click "Show Number" buttons and extract phone
+            if (!business.phone) {
+              console.log(`  -> DEBUG: Trying to click show number buttons`);
+              try {
+                const showNumberSelectors = [
+                  'button[title*="Show"]',
+                  'button[title*="Number"]',
+                  'button[title*="Phone"]',
+                  'button[title*="Call"]',
+                  'span[title*="Show"]',
+                  'span[title*="Number"]',
+                  'span[title*="Phone"]',
+                  'a[title*="Show"]',
+                  'a[title*="Number"]',
+                  'a[title*="Phone"]',
+                  '.show-number',
+                  '.show-phone',
+                  '.show-contact',
+                  '[class*="show-number"]',
+                  '[class*="show-phone"]',
+                  '[class*="show-contact"]',
+                  '[onclick*="show"]',
+                  '[onclick*="reveal"]',
+                  '[onclick*="phone"]'
+                ];
+                
+                for (const selector of showNumberSelectors) {
+                  const button = listing.querySelector(selector);
+                  if (button) {
+                    console.log(`  -> DEBUG: Found show number button: "${selector}"`);
+                    try {
+                      button.click();
+                      // Wait a moment for phone to appear
+                      await new Promise(resolve => {
+                        setTimeout(resolve, 1000);
+                      });
+                      
+                      // Try to extract phone again after click
+                      const afterClickText = listing.textContent || '';
+                      const afterClickMatches = afterClickText.match(phoneRegex);
+                      if (afterClickMatches) {
+                        for (const phone of afterClickMatches) {
+                          const formattedPhone = formatPhoneNumber(phone);
+                          if (formattedPhone) {
+                            business.phone = formattedPhone;
+                            console.log(`  -> SUCCESS: Phone after click: "${phone}" -> "${formattedPhone}"`);
+                            break;
+                          }
+                        }
+                      }
+                      
+                      if (business.phone) break;
+                    } catch (clickError) {
+                      console.log(`  -> DEBUG: Could not click button: ${clickError.message}`);
+                    }
+                  }
+                }
+              } catch (error) {
+                console.log(`  -> DEBUG: Error in show number logic: ${error.message}`);
+              }
+            }
+            
+            // Final fallback: Try to hover over elements to reveal phone numbers
+            if (!business.phone) {
+              console.log(`  -> DEBUG: Trying hover interactions to reveal phone numbers`);
+              try {
+                const hoverSelectors = [
+                  '.contact-info',
+                  '.phone-container',
+                  '.call-container',
+                  '[class*="contact"]',
+                  '[class*="phone"]',
+                  '[class*="call"]',
+                  '[data-testid*="contact"]',
+                  '[data-testid*="phone"]'
+                ];
+                
+                for (const selector of hoverSelectors) {
+                  const element = listing.querySelector(selector);
+                  if (element) {
+                    console.log(`  -> DEBUG: Hovering over: "${selector}"`);
+                    try {
+                      // Create and dispatch hover events
+                      element.dispatchEvent(new MouseEvent('mouseenter', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                      }));
+                      
+                      // Wait for content to appear
+                      await new Promise(resolve => {
+                        setTimeout(resolve, 500);
+                      });
+                      
+                      // Try to extract phone after hover
+                      const hoverText = element.textContent || '';
+                      const hoverMatches = hoverText.match(phoneRegex);
+                      if (hoverMatches) {
+                        for (const phone of hoverMatches) {
+                          const formattedPhone = formatPhoneNumber(phone);
+                          if (formattedPhone) {
+                            business.phone = formattedPhone;
+                            console.log(`  -> SUCCESS: Phone after hover: "${phone}" -> "${formattedPhone}"`);
+                            break;
+                          }
+                        }
+                      }
+                      
+                      if (business.phone) break;
+                    } catch (hoverError) {
+                      console.log(`  -> DEBUG: Could not hover: ${hoverError.message}`);
+                    }
+                  }
+                }
+              } catch (error) {
+                console.log(`  -> DEBUG: Error in hover logic: ${error.message}`);
+              }
+            }
+            
+            // Extract Address
+            const addressSelectors = [
+              '.address-info', '.address', '.location', '.addr',
+              '[data-testid="address"]', '[data-testid*="address"]',
+              '[class*="address"]', '[class*="location"]', '[class*="addr"]',
+              '.resultbox .address', '.resultbox .location', '.resultbox .addr',
+              'span[class*="address"]', 'div[class*="address"]',
+              '.shop-address', '.store-address', '.business-address',
+              '.vendor-address', '.contact-address', '.full-address',
+              '.map-location', '.geo-location', '.street-address'
+            ];
+            
+            for (const selector of addressSelectors) {
+              const element = listing.querySelector(selector);
+              if (element) {
+                const addressText = element.textContent?.trim() || '';
+                if (addressText.length > 10 && addressText.length < 500 &&
+                    (addressText.toLowerCase().includes('road') || 
+                     addressText.toLowerCase().includes('street') ||
+                     addressText.toLowerCase().includes('near') ||
+                     addressText.toLowerCase().includes('plot') ||
+                     addressText.toLowerCase().includes('shop') ||
+                     addressText.toLowerCase().includes('building') ||
+                     addressText.toLowerCase().includes('area') ||
+                     addressText.toLowerCase().includes('sector') ||
+                     /\d+\s*[A-Za-z]/.test(addressText) ||
+                     /\d+,\s*/.test(addressText))) {
+                  business.address = addressText;
+                  console.log(`  -> Address from "${selector}": "${addressText}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Extract Category
+            const categorySelectors = [
+              '.category-info', '.category', '[class*="category"]',
+              '[data-testid="category"]', '[data-testid*="category"]',
+              'span[class*="jsx"]', 'div[class*="jsx"]',
+              '.resultbox .category', '.resultbox span',
+              '.service-category', '.business-category', '.vendor-category',
+              '.type', '.service-type', '.business-type',
+              'span[class*="category"]', 'div[class*="category"]',
+              '.tag', '.label', '.badge', '.classification'
+            ];
+            
+            for (const selector of categorySelectors) {
+              const element = listing.querySelector(selector);
+              if (element) {
+                const categoryText = element.textContent?.trim() || '';
+                if (categoryText.length > 2 && categoryText.length < 80 &&
+                    !/\d{10}/.test(categoryText) &&
+                    !categoryText.toLowerCase().includes('ad') &&
+                    !categoryText.toLowerCase().includes('sponsored') &&
+                    !categoryText.toLowerCase().includes('promotion') &&
+                    !categoryText.match(/^(call|contact|phone|mobile|address)$/i) &&
+                    !categoryText.match(/^\d+$/)) {
+                  business.category = cleanCategoryName(categoryText);
+                  console.log(`  -> Category from "${selector}": "${business.category}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Extract City
+            if (business.address) {
+              const cities = ['delhi', 'mumbai', 'bangalore', 'chennai', 'kolkata', 'pune', 'hyderabad', 'ahmedabad', 'jaipur', 'lucknow', 'noida', 'gurgaon', 'faridabad', 'ghaziabad'];
+              for (const city of cities) {
+                if (business.address.toLowerCase().includes(city)) {
+                  business.city = city.charAt(0).toUpperCase() + city.slice(1);
+                  console.log(`  -> City from address: "${business.city}"`);
+                  break;
+                }
+              }
+            }
+            
+            if (!business.city) {
+              const urlMatch = window.location.href.match(/\/([A-Za-z]+)\//);
+              if (urlMatch) {
+                const cityFromUrl = urlMatch[1];
+                business.city = cityFromUrl.charAt(0).toUpperCase() + cityFromUrl.slice(1);
+                console.log(`  -> City from URL: "${business.city}"`);
+              }
+            }
+            
+            // Extract Image
+            const allImages = listing.querySelectorAll('img');
+            let imageSrc = null;
+            
+            console.log(`  -> Found ${allImages.length} images in listing`);
+            
+            // Force trigger lazy loading
+            allImages.forEach(img => {
+              if (img.dataset.src && !img.src) {
+                img.src = img.dataset.src;
+              }
+              if (img.dataset.lazy && !img.src) {
+                img.src = img.dataset.lazy;
+              }
+              if (img.dataset.original && !img.src) {
+                img.src = img.dataset.original;
+              }
+            });
+            
+            // Find the best business image
+            for (const imageElement of allImages) {
+              const rect = imageElement.getBoundingClientRect && imageElement.getBoundingClientRect();
+              if (rect && (rect.width < 50 || rect.height < 50)) {
+                continue;
+              }
+              
+              const possibleSources = [
+                imageElement.src,
+                imageElement.getAttribute('data-src'),
+                imageElement.getAttribute('data-lazy'),
+                imageElement.getAttribute('data-original'),
+                imageElement.getAttribute('data-srcset'),
+                imageElement.srcset,
+                imageElement.getAttribute('data-jpg'),
+                imageElement.getAttribute('data-webp'),
+                imageElement.getAttribute('data-image'),
+                imageElement.getAttribute('data-thumbnail'),
+                imageElement.getAttribute('data-photo'),
+                imageElement.getAttribute('data-picture'),
+                imageElement.getAttribute('data-lazy-src'),
+                imageElement.getAttribute('data-defer-src'),
+                imageElement.getAttribute('data-ll')
+              ];
+              
+              for (const source of possibleSources) {
+                if (source && !source.startsWith('data:') && source.trim() !== '' && source !== 'about:blank') {
+                  imageSrc = source;
+                  break;
+                }
+              }
+              
+              if (imageSrc && (imageSrc.includes('srcset') || imageSrc.includes('data-srcset'))) {
+                const srcsetMatch = imageSrc.match(/([^\s,]+)(?:\s+\d+w)?/);
+                if (srcsetMatch) {
+                  imageSrc = srcsetMatch[1];
+                }
+              }
+              
+              if (imageSrc && imageSrc !== 'about:blank') {
+                console.log(`  -> Raw image source found: "${imageSrc}"`);
+                break;
+              }
+            }
+            
+            // Process the image URL
+            if (imageSrc && imageSrc !== 'about:blank') {
+              if (imageSrc.startsWith('data:')) {
+                console.log(`  -> Skipping data URI`);
+              } else {
+                let cleanImageUrl = imageSrc.trim();
+                cleanImageUrl = cleanImageUrl.split('?')[0];
+                
+                if (cleanImageUrl.includes('justdial') || cleanImageUrl.includes('jdimages')) {
+                  if (cleanImageUrl.includes('thumb') || cleanImageUrl.includes('small') || cleanImageUrl.includes('medium')) {
+                    cleanImageUrl = cleanImageUrl.replace(/thumb|small|medium/g, 'large');
+                  }
+                  
+                  cleanImageUrl = cleanImageUrl.replace(/\/w\d+/g, '/w300');
+                  cleanImageUrl = cleanImageUrl.replace(/\/h\d+/g, '/h300');
+                }
+                
+                business.image = cleanImageUrl;
+                console.log(`  -> Final image URL: "${business.image}"`);
+              }
+            }
+            
+            // Add business to results if it has valid data
+            if (business.name || business.phone) {
+              businesses.push(business);
+              console.log(`  -> Added business: "${business.name}" with phone: "${business.phone}" (Image: ${business.image})`);
+            } else {
+              console.log(`  -> Skipped listing ${index}: No valid name or phone found`);
+            }
+            
+          } catch (error) {
+            console.log(`Error processing listing ${index}:`, error.message);
+          }
+        }
+        
+        console.log(`=== EXTRACTION COMPLETE ===`);
+        console.log(`Total businesses extracted: ${businesses.length}`);
+        
+        return businesses;
+        
+      } catch (error) {
+        console.error('Error in business extraction:', error);
+        return [];
+      }
+    });
+  }
+
+  async extractGenericData() {
+    return await this.page.evaluate(() => {
+      try {
+        console.log('=== ENHANCED GENERIC DATA EXTRACTION ===');
+        const businesses = [];
+        
+        const phoneRegex = /\+91[-\s]?\d{3}[-\s]?\d{3}[-\s]?\d{4}|0?[6-9]\d{9}|\d{10}|\d{3}[-\s]?\d{3}[-\s]?\d{4}|\(\d{3}\)[-\s]?\d{3}[-\s]?\d{4}/g;
+        
+        // Helper function to format phone number to standard 10-digit Indian format
+        function formatPhoneNumber(phoneNumber) {
+          let cleanPhone = phoneNumber.replace(/\D/g, '');
+          
+          // Handle different phone number formats
+          if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+            // International format: +91XXXXXXXXXX
+            cleanPhone = cleanPhone.substring(2);
+          } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+            // National format: 0XXXXXXXXXX
+            cleanPhone = cleanPhone.substring(1);
+          } else if (cleanPhone.length === 11 && cleanPhone.startsWith('91')) {
+            // Another international format: 91XXXXXXXXXX
+            cleanPhone = cleanPhone.substring(2);
+          }
+          
+          // Validate that we have a 10-digit number starting with 6-9 (Indian mobile)
+          if (cleanPhone.length === 10 && /^[6-9]\d{9}$/.test(cleanPhone)) {
+            return cleanPhone;
+          }
+          
+          return null; // Invalid phone number
+        }
+        
+        const allText = document.body ? document.body.innerText : '';
+        let phones = allText.match(phoneRegex) || [];
+        
+        phones = [...new Set(phones.map(phone => formatPhoneNumber(phone)).filter(phone => phone !== null))];
+        
+        console.log('Found unique phone numbers:', phones.length);
+        
+        const potentialCards = document.querySelectorAll(
+          'div[class*="jsx"], div[class*="result"], div[class*="listing"], div[class*="card"], div[class*="company"], div[class*="store"], ' +
+          'article, section[class*="business"], div[class*="service"], div[class*="provider"], ' +
+          'div[class*="contact"], div[class*="info"], li[class*="result"], div[class*="item"]'
+        );
+        
+        console.log('Potential cards found:', potentialCards.length);
+        
+        const structuredData = [];
+        const usedPhones = new Set();
+        
+        potentialCards.forEach((card, index) => {
+          if (!card) return;
+          const cardText = card.textContent || '';
+          const phoneMatches = cardText.match(phoneRegex);
+          
+          if (phoneMatches && phoneMatches.length > 0) {
+            const formattedPhone = formatPhoneNumber(phoneMatches[0]);
+            
+            if (!formattedPhone || usedPhones.has(formattedPhone)) return;
+            usedPhones.add(formattedPhone);
+            
+            const business = {
+              name: '',
+              phone: formattedPhone,
+              address: '',
+              category: '',
+              city: '',
+              rating: '',
+              image: '',
+              website: ''
+            };
+            
+            // Enhanced name extraction
+            const nameSelectors = [
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              '.title', '.name', '[class*="name"]', 
+              '.company-name', '.store-name', '.business-name',
+              '.provider-name', '.service-name',
+              'span[class*="jsx"]', 'div[class*="jsx"]',
+              'a[class*="jsx"]', 'strong', 'b'
+            ];
+            
+            for (const selector of nameSelectors) {
+              const elements = card.querySelectorAll(selector);
+              for (const element of elements) {
+                if (!element) continue;
+                const text = element.textContent?.trim() || '';
+                if (text.length > 3 && text.length < 100 && 
+                    !/^\d/.test(text) && !phoneRegex.test(text) &&
+                    !text.toLowerCase().includes('ad') &&
+                    !text.toLowerCase().includes('sponsored')) {
+                  business.name = text;
+                  console.log(`  -> Name found via "${selector}": "${text}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Additional category extraction
+            if (!business.category) {
+              const listingText = card?.textContent || '';
+              const categoryKeywords = ['electrician', 'electrical', 'contractor', 'service', 'repair', 'installation', 'wiring'];
+              const lines = listingText.split('\n');
+              
+              for (const line of lines) {
+                const cleanLine = line.trim();
+                if (categoryKeywords.some(keyword => cleanLine.toLowerCase().includes(keyword)) && 
+                    cleanLine.length > 3 && cleanLine.length < 30 &&
+                    !/\d{10}/.test(cleanLine)) {
+                  business.category = cleanCategoryName(cleanLine);
+                  console.log(`  -> Category from text: "${business.category}"`);
+                  break;
+                }
+              }
+            }
+            
+            // Fallback: extract category from URL
+            if (!business.category) {
+              const urlMatch = window.location.href.match(/\/([a-zA-Z-]+)\/([a-zA-Z-]+)$/);
+              if (urlMatch) {
+                business.category = cleanCategoryName(urlMatch[2]);
+                console.log(`  -> Category from URL: "${business.category}"`);
+              }
+            }
+            
+            // Final fallback: use detected category if available
+            if (!business.category && window.detectedCategory) {
+              business.category = window.detectedCategory;
+              console.log(`  -> Category from detected category: "${business.category}"`);
+            }
+            
+            // Set image to N/A if not found
+            if (!business.image) {
+              business.image = 'N/A';
+            }
+            
+            // Add business to structured data if it has valid info
+            if (business.name || business.phone) {
+              structuredData.push(business);
+              console.log(`  -> Added structured business: "${business.name}" with phone: "${business.phone}" (Image: ${business.image})`);
+            }
+          }
+        });
+        
+        console.log('Structured data found:', structuredData.length);
+        
+        // Remove duplicates
+        const uniqueBusinesses = [];
+        const seenPhones = new Set();
+        const seenNames = new Set();
+        
+        structuredData.forEach(business => {
+          const phoneKey = business.phone || '';
+          const nameKey = business.name ? business.name.toLowerCase().trim() : '';
+          
+          if (!seenPhones.has(phoneKey) && !seenNames.has(nameKey)) {
+            seenPhones.add(phoneKey);
+            seenNames.add(nameKey);
+            uniqueBusinesses.push(business);
+          }
+        });
+        
+        console.log(`Unique businesses after deduplication: ${uniqueBusinesses.length}`);
+        
+        return uniqueBusinesses;
+        
+      } catch (error) {
+        console.error('Error in generic data extraction:', error);
+        return [];
+      }
+    });
+  }
+
+  async close() {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+      this.page = null;
+    }
+  }
+}
+
+// Enhanced Bulk Scraper Class for 250-350 businesses
+class BulkJustdialScraper extends JustdialScraper {
+  constructor() {
+    super();
+    this.targetCount = 300; // Target 250-350 businesses
+    this.minCount = 250;
+    this.maxCount = 350;
+    this.progressCallback = null;
+  }
+
+  setProgressCallback(callback) {
+    this.progressCallback = callback;
+  }
+
+  async scrapeBulkBusinessData(url) {
+    try {
+      await this.initialize();
+      
+      console.log(`Starting bulk scraping for ${this.minCount}-${this.maxCount} businesses from:`, url);
+      
+      // Add initial delay to prevent rate limiting
+      await new Promise(resolve => setTimeout(resolve, Math.random() * 6000 + 4000));
+      
+      // Enhanced navigation with multiple attempts
+      let accessDenied = true;
+      let attempts = 0;
+      const maxAttempts = 8; // Increased attempts for bulk scraping
+      
+      while (accessDenied && attempts < maxAttempts) {
+        attempts++;
+        console.log(`Bulk scraping attempt ${attempts} of ${maxAttempts}`);
+        
+        try {
+          if (attempts > 1) {
+            console.log('Waiting before bulk retry to prevent rate limiting...');
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 15000 + 10000));
+          }
+          
+          // Navigate with different wait strategies
+          if (attempts === 1) {
+            await this.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+          } else if (attempts === 2) {
+            await this.page.goto(url, { waitUntil: 'networkidle0', timeout: 60000 });
+          } else {
+            await this.page.goto(url, { waitUntil: 'load', timeout: 90000 });
+          }
+          
+          // Wait for content to load
+          await new Promise(resolve => setTimeout(resolve, Math.random() * 8000 + 5000));
+          
+          // Check for access denied
+          const pageTitle = await this.page.title();
+          const pageContent = await this.page.content();
+          
+          console.log('Bulk scraping - Page title:', pageTitle);
+          console.log('Bulk scraping - Current URL:', this.page.url());
+          
+          accessDenied = 
+            pageTitle.includes('Access Denied') ||
+            pageTitle.includes('403') ||
+            pageTitle.includes('Blocked') ||
+            pageTitle.includes('Robot Check') ||
+            pageTitle.includes('CAPTCHA') ||
+            pageTitle.includes('Security Check') ||
+            pageTitle.includes('Too Many Requests') ||
+            pageContent.includes('Access Denied') ||
+            pageContent.includes('403 Forbidden') ||
+            pageContent.includes('captcha') ||
+            pageContent.includes('robot') ||
+            pageContent.includes('security check') ||
+            pageContent.includes('rate limit') ||
+            pageContent.includes('too many requests') ||
+            pageContent.includes('cloudflare') ||
+            pageContent.includes('challenge');
+          
+          if (accessDenied) {
+            console.log('Bulk scraping - Access denied/rate limited detected, trying different approach...');
+            
+            if (attempts <= 3) {
+              await this.page.evaluate(() => {
+                window.scrollTo(0, Math.floor(Math.random() * 800));
+                document.dispatchEvent(new MouseEvent('mousemove', {
+                  clientX: Math.random() * window.innerWidth,
+                  clientY: Math.random() * window.innerHeight
+                }));
+              });
+              await new Promise(resolve => setTimeout(resolve,5000));
+              await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 });
+            }
+          } else {
+            console.log('Bulk scraping - Successfully accessed the page!');
+            break;
+          }
+          
+        } catch (error) {
+          console.log(`Bulk scraping navigation attempt ${attempts} failed:`, error.message);
+          if (attempts >= maxAttempts) {
+            throw error;
+          }
+        }
+      }
+      
+      if (accessDenied) {
+        console.log('Bulk scraping - Still getting access denied after all attempts, attempting to extract anyway...');
+        try {
+          await new Promise(resolve => setTimeout(resolve,8000));
+        } catch (e) {
+          console.log('Bulk scraping - Wait timeout, proceeding anyway...');
+        }
+      }
+      
+      // Use enhanced bulk pagination handler
+      console.log('Starting enhanced bulk pagination-aware scraping...');
+      const businessData = await this.handleBulkPagination();
+      
+      // If no businesses found with bulk pagination, try enhanced methods
+      if (businessData.length === 0) {
+        console.log('Bulk scraping - No businesses found with pagination, trying enhanced fallback methods...');
+        await this.enhancedBulkAutoScroll();
+        const fallbackData = await this.extractBusinessesFromCurrentPage();
+        return fallbackData;
+      }
+    
+      console.log(`Bulk scraping completed - Found ${businessData.length} businesses`);
+      
+      // If still not enough businesses, try generic approach
+      if (businessData.length < this.minCount) {
+        console.log('Bulk scraping - Trying generic data extraction approach to reach target...');
+        const genericData = await this.extractGenericData();
+        console.log(`Generic approach found ${genericData.length} additional businesses`);
+        
+        // Combine, clean, and deduplicate
+        const cleanedBusinessData = businessData.map(b => this.cleanAndValidateBusiness(b));
+        const cleanedGenericData = genericData.map(b => this.cleanAndValidateBusiness(b));
+        const combinedData = this.deduplicateBusinesses([...cleanedBusinessData, ...cleanedGenericData]);
+        console.log(`Combined and deduplicated: ${combinedData.length} businesses`);
+        
+        // Ensure we have at least 100 unique businesses to match Justdial's actual count
+        if (combinedData.length < 100) {
+          console.log(`Warning: Only ${combinedData.length} unique businesses found, which is less than the target 100+ from Justdial`);
+        }
+        
+        return combinedData.slice(0, this.maxCount);
+      }
+    
+      return businessData.slice(0, this.maxCount);
+    
+    } catch (error) {
+      console.error('Bulk scraping error:', error);
+      
+      if (error.message.includes('Runtime.callFunctionOn timed out') || 
+          error.message.includes('protocolTimeout')) {
+        console.log('Bulk scraping timeout error detected, attempting graceful recovery...');
+        throw new Error(`Bulk scraping timeout: The page took too long to respond. Please try again in a few minutes.`);
+      }
+      
+      if (error.message.includes('net::ERR_') || error.message.includes('Navigation timeout')) {
+        throw new Error(`Bulk scraping network error: Unable to reach the website. Please check your internet connection and try again.`);
+      }
+      
+      throw new Error(`Failed to bulk scrape data: ${error.message}`);
+    } finally {
+      await this.close();
+    }
+  }
+
+  async handleBulkPagination() {
+    console.log('Starting enhanced bulk pagination for maximum data extraction...');
+    
+    let allBusinesses = [];
+    let currentPage = 1;
+    const maxPages = 100; // Increased for bulk scraping
+    let loadMoreFound = true;
+    let lastPageBusinessCount = 0;
+    let consecutiveEmptyPages = 0;
+    const maxEmptyPages = 10; // Increased from 5 to 10 for better scraping
+    let noNewContentCount = 0;
+    const maxNoNewContent = 8; // Stop after 8 pages with no new content
+    
+    while (loadMoreFound && currentPage <= maxPages && allBusinesses.length < this.maxCount) {
+      const progress = Math.min((allBusinesses.length / this.minCount) * 100, 100);
+      console.log(`=== BULK PROCESSING PAGE ${currentPage} - Progress: ${progress.toFixed(1)}% (${allBusinesses.length}/${this.minCount}) ===`);
+      
+      if (this.progressCallback) {
+        this.progressCallback({
+          current: allBusinesses.length,
+          target: this.minCount,
+          percentage: progress,
+          page: currentPage,
+          status: 'processing'
+        });
+      }
+      
+      // Step 1: Wait for initial content to load
+      console.log(`Bulk Page ${currentPage}: Waiting for initial content to load...`);
+      await new Promise(resolve => setTimeout(resolve, 4000));
+      
+      // Step 2: Enhanced scrolling for bulk data
+      console.log(`Bulk Page ${currentPage}: Enhanced scrolling for maximum data extraction...`);
+      await this.enhancedBulkScroll();
+      
+      // Step 3: Extract ALL businesses from current page
+      console.log(`Bulk Page ${currentPage}: Extracting ALL businesses from this page...`);
+      const pageBusinesses = await this.extractBusinessesFromCurrentPage();
+      console.log(`Bulk Page ${currentPage}: Found ${pageBusinesses.length} businesses`);
+      
+      // Step 4: Add all businesses from this page to our collection
+      console.log(`Bulk Page ${currentPage}: Adding ${pageBusinesses.length} businesses to collection...`);
+      const previousCount = allBusinesses.length;
+      allBusinesses.push(...pageBusinesses);
+      const newBusinessesCount = allBusinesses.length - previousCount;
+      console.log(`Bulk Page ${currentPage}: Total businesses so far: ${allBusinesses.length} (Added ${newBusinessesCount} new)`);
+      
+      // Check if we've reached our target
+      if (allBusinesses.length >= this.minCount) {
+        console.log(`Bulk scraping target achieved! Found ${allBusinesses.length} businesses.`);
+        if (this.progressCallback) {
+          this.progressCallback({
+            current: allBusinesses.length,
+            target: this.minCount,
+            percentage: 100,
+            page: currentPage,
+            status: 'completed'
+          });
+        }
+        break;
+      }
+      
+      // Step 5: Check for new content
+      if (newBusinessesCount === 0) {
+        noNewContentCount++;
+        console.log(`Bulk Page ${currentPage}: No new businesses found (${noNewContentCount}/${maxNoNewContent})`);
+        if (noNewContentCount >= maxNoNewContent) {
+          console.log('Bulk scraping: Too many pages with no new content, stopping...');
+          break;
+        }
+      } else {
+        noNewContentCount = 0;
+      }
+      
+      // Step 6: Check if we should continue based on empty pages
+      if (pageBusinesses.length === 0) {
+        consecutiveEmptyPages++;
+        console.log(`Bulk Page ${currentPage}: Empty page detected (${consecutiveEmptyPages}/${maxEmptyPages})`);
+        if (consecutiveEmptyPages >= maxEmptyPages) {
+          console.log('Bulk scraping: Too many consecutive empty pages, stopping...');
+          break;
+        }
+      } else {
+        consecutiveEmptyPages = 0;
+        lastPageBusinessCount = pageBusinesses.length;
+      }
+      
+      // Step 7: Check for more pages or load more buttons
+      console.log(`Bulk Page ${currentPage}: Looking for next page or load more button...`);
+      loadMoreFound = await this.page.evaluate(() => {
+        // Enhanced Load More button detection
+        const loadMoreSelectors = [
+          'button[class*="load"]',
+          'button[class*="more"]',
+          'a[class*="load"]',
+          'a[class*="more"]',
+          'div[class*="load"] button',
+          'div[class*="more"] button',
+          '.load-more',
+          '.show-more',
+          '.view-more',
+          '.more-results',
+          '.loadmore',
+          '.showmore',
+          '[data-testid*="load"]',
+          '[data-testid*="more"]',
+          '[class*="jsx"]:has(button)',
+          'div[class*="jsx"] button',
+          'span[class*="jsx"] button',
+          // More specific Justdial selectors
+          'button[class*="result"]',
+          'button[class*="page"]',
+          'a[onclick*="more"]',
+          'button[onclick*="more"]',
+          'div[class*="pagination"] button',
+          'div[class*="pagination"] a'
+        ];
+        
+        // First try to find and click load more buttons
+        for (const selector of loadMoreSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.toLowerCase() || '';
+            const isVisible = element.offsetParent !== null;
+            
+            if (isVisible && (
+              text.includes('load') || 
+              text.includes('more') || 
+              text.includes('view') ||
+              text.includes('show') ||
+              text.includes('next') ||
+              text.includes('continue')
+            )) {
+              console.log(`Bulk found load more element: ${selector} - "${text}" - Visible: ${isVisible}`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              setTimeout(() => element.click(), 100);
+              return true;
+            }
+          }
+        }
+        
+        // Try to find pagination links
+        const paginationSelectors = [
+          'a[href*="page-"]',
+          'a[class*="page"]',
+          'li[class*="page"] a',
+          '.pagination a',
+          '[data-testid*="page"]',
+          'div[class*="pagination"] a:not([class*="active"])',
+          'ul[class*="pagination"] a'
+        ];
+        
+        for (const selector of paginationSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const element of elements) {
+            const text = element.textContent?.trim() || '';
+            const href = element.getAttribute('href') || '';
+            const isVisible = element.offsetParent !== null;
+            
+            if (isVisible && (
+              (text.includes('Next') || text.includes('>') || text.includes('»') || href.includes('page-')) && 
+              !text.includes('Previous') && !text.includes('<') && !text.includes('«')
+            )) {
+              console.log(`Bulk found pagination link: ${selector} - "${text}" - ${href}`);
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              setTimeout(() => element.click(), 100);
+              return true;
+            }
+          }
+        }
+        
+        // Try to scroll down to trigger lazy loading
+        const currentScroll = window.scrollY;
+        const maxScroll = document.body.scrollHeight - window.innerHeight;
+        
+        if (currentScroll < maxScroll - 500) {
+          console.log('Bulk: Scrolling down to trigger more content...');
+          window.scrollTo({ top: currentScroll + 800, behavior: 'smooth' });
+          setTimeout(() => {
+            window.scrollTo({ top: maxScroll, behavior: 'smooth' });
+          }, 500);
+          return true;
+        }
+        
+        return false;
+      });
+      
+      // Step 8: Move to next page if available
+      if (loadMoreFound) {
+        console.log(`Bulk Page ${currentPage}: Moving to next page...`);
+        await new Promise(resolve => setTimeout(resolve,8000)); // Longer wait for bulk scraping
+        currentPage++;
+        console.log(`=== BULK PAGE ${currentPage - 1} COMPLETED ===`);
+      } else {
+        console.log(`Bulk Page ${currentPage}: No more pages found - scraping complete`);
+        console.log(`=== BULK PAGE ${currentPage} COMPLETED - NO MORE PAGES ===`);
+      }
+    }
+    
+    console.log(`Bulk scraping - Total pages processed: ${currentPage - 1}`);
+    console.log(`Bulk scraping - Total businesses found: ${allBusinesses.length}`);
+    
+    // Clean and deduplicate all collected businesses
+    const cleanedBusinesses = allBusinesses.map(b => this.cleanAndValidateBusiness(b));
+    const uniqueBusinesses = this.deduplicateBusinesses(cleanedBusinesses);
+    
+    console.log(`Bulk scraping - After deduplication: ${uniqueBusinesses.length} unique businesses`);
+    
+    // Ensure minimum 100 businesses if possible to match Justdial's actual count
+    if (uniqueBusinesses.length < 100 && uniqueBusinesses.length < allBusinesses.length) {
+      console.log('Bulk scraping - Trying to include more businesses to reach minimum 100...');
+      // If we filtered out too many, relax some validation criteria
+      const relaxedBusinesses = this.deduplicateBusinessesRelaxed(allBusinesses);
+      if (relaxedBusinesses.length > uniqueBusinesses.length) {
+        console.log(`Bulk scraping - Using relaxed criteria: ${relaxedBusinesses.length} businesses`);
+        return relaxedBusinesses.slice(0, this.maxCount);
+      }
+    }
+    
+    return uniqueBusinesses.slice(0, this.maxCount);
+  }
+
+  async enhancedBulkScroll() {
+    console.log('Starting enhanced bulk scrolling for maximum content loading...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 15; // Increased from 10 for bulk
+        const maxScrollAttempts = 60; // Increased from 40 for bulk
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          // Slower, more thorough scrolling for bulk
+          const scrollStep = Math.min(window.innerHeight, 400); // Reduced from 600
+          window.scrollBy(0, scrollStep);
+          totalHeight += scrollStep;
+          scrollAttempts++;
+          
+          // Check if new content has loaded
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          // Enhanced stopping conditions for bulk
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 200;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Bulk page scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            // Enhanced wait for lazy-loaded content
+            setTimeout(() => {
+              // Scroll back to top to ensure all content is accessible
+              window.scrollTo(0, 0);
+              
+              // Trigger any scroll-based lazy loading at the top
+              setTimeout(() => {
+                window.scrollTo(0, 300);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(() => {
+                    // Final scroll to bottom to ensure everything is loaded
+                    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+                    setTimeout(resolve, 3000);
+                  }, 1500);
+                }, 1500);
+              }, 2000);
+            }, 5000); // Increased from 4000
+          }
+        }, 300); // Slower scrolling from 400
+      });
+    });
+  }
+
+  async enhancedBulkAutoScroll() {
+    console.log('Starting enhanced bulk automatic scrolling for dynamic content...');
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let previousHeight = 0;
+        let noChangeCount = 0;
+        let scrollAttempts = 0;
+        const maxNoChangeCount = 15;
+        const maxScrollAttempts = 80;
+        
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          const windowHeight = window.innerHeight;
+          
+          const scrollStep = Math.min(window.innerHeight, 500);
+          window.scrollBy(0, scrollStep);
+          totalHeight += scrollStep;
+          scrollAttempts++;
+          
+          if (scrollHeight === previousHeight) {
+            noChangeCount++;
+          } else {
+            noChangeCount = 0;
+            previousHeight = scrollHeight;
+          }
+          
+          const reachedBottom = window.scrollY + windowHeight >= scrollHeight - 200;
+          const shouldStop = reachedBottom && noChangeCount >= maxNoChangeCount;
+          const maxAttemptsReached = scrollAttempts >= maxScrollAttempts;
+          
+          if (shouldStop || maxAttemptsReached) {
+            clearInterval(timer);
+            console.log(`Enhanced bulk scrolling completed. Attempts: ${scrollAttempts}, No change count: ${noChangeCount}`);
+            
+            setTimeout(() => {
+              window.scrollTo(0, 0);
+              
+              setTimeout(() => {
+                window.scrollTo(0, 200);
+                setTimeout(() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(resolve, 3000);
+                }, 1500);
+              }, 1500);
+            }, 5000);
+          }
+        }, 600);
+      });
+    });
+  }
+
+  deduplicateBusinesses(businesses) {
+    console.log(`Starting deduplication for ${businesses.length} businesses...`);
+    const uniqueBusinesses = [];
+    const seenExactBusinesses = new Set(); // For exact duplicates only
+    
+    businesses.forEach((business, index) => {
+      const phoneKey = business.phone || '';
+      const nameKey = business.name ? business.name.toLowerCase().trim() : '';
+      const addressKey = business.address ? business.address.toLowerCase().trim() : '';
+      
+      // Enhanced validation - check if business has meaningful data
+      const hasValidName = nameKey && nameKey.length > 2 && !nameKey.match(/^(call|contact|phone|mobile|address|unknown|n\/a)$/i);
+      const hasValidPhone = phoneKey && phoneKey.length === 10 && /^[6-9]\d{9}$/.test(phoneKey);
+      const hasValidAddress = addressKey && addressKey.length > 10;
+      
+      // Additional validation to filter out pagination and navigation elements
+      const isPaginationElement = nameKey && (
+        nameKey.includes('more') ||
+        nameKey.includes('whatsapp') ||
+        nameKey.includes('show') ||
+        nameKey.includes('view') ||
+        nameKey.includes('next') ||
+        nameKey.includes('previous') ||
+        nameKey.includes('page') ||
+        nameKey.includes('load') ||
+        nameKey.match(/^\d+\s*more$/i) ||
+        nameKey.match(/^\d+$/) ||
+        nameKey.match(/^(\d+,\s*)+\d+\s*more$/i) ||
+        nameKey.match(/^(whatsapp|instagram|facebook|twitter|youtube|linkedin)/i) ||
+        nameKey.match(/^(share|follow|connect|message|chat|call)$/i) ||
+        nameKey.match(/^(menu|home|back|close|cancel|ok|yes|no)$/i) ||
+        nameKey.match(/^(\w+,\s*)+\d+\s*more$/i)
+      );
+      
+      // Business must have at least name + phone, or name + address to be considered valid
+      // AND must not be a pagination/navigation element
+      const isValidBusiness = !isPaginationElement && ((hasValidName && hasValidPhone) || (hasValidName && hasValidAddress));
+      
+      if (!isValidBusiness) {
+        const reason = isPaginationElement ? 'Pagination/Navigation element' : 'Invalid business data';
+        console.log(`-> Filtering out ${reason} ${index}: "${business.name}" (Phone: ${business.phone}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+        return;
+      }
+      
+      // Create unique key for exact duplicate detection (same name + same phone + same address)
+      const exactBusinessKey = `${nameKey}|${phoneKey}|${addressKey}`;
+      
+      // Allow same business names with different phone numbers or addresses
+      // Only filter out exact duplicates (same name + same phone + same address)
+      const isExactDuplicate = seenExactBusinesses.has(exactBusinessKey);
+      
+      if (!isExactDuplicate) {
+        seenExactBusinesses.add(exactBusinessKey);
+        uniqueBusinesses.push(business);
+        console.log(`-> Added unique business: "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      } else {
+        console.log(`-> Removed exact duplicate: "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      }
+    });
+    
+    console.log(`Deduplication complete: ${uniqueBusinesses.length} unique businesses from ${businesses.length} total`);
+    return uniqueBusinesses;
+  }
+
+  // Enhanced business validation and cleaning
+  cleanAndValidateBusiness(business) {
+    const cleaned = { ...business };
+    
+    // Clean name
+    if (cleaned.name) {
+      cleaned.name = cleaned.name.trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove control characters
+        .replace(/^[^a-zA-Z0-9]*/, '') // Remove leading non-alphanumeric
+        .replace(/[^a-zA-Z0-9]*$/, '') // Remove trailing non-alphanumeric
+        .substring(0, 200); // Limit length
+      
+      // Additional cleaning for pagination elements
+      if (cleaned.name) {
+        // Remove common pagination patterns
+        cleaned.name = cleaned.name
+          .replace(/^(\d+,\s*)+\d+\s*more$/gi, '') // "33 More,8 More,12 More"
+          .replace(/^(\w+,\s*)+\d+\s*more$/gi, '') // "WhatsApp,33 More"
+          .replace(/^(whatsapp|instagram|facebook|twitter|youtube|linkedin),?\s*\d*\s*more?$/gi, '')
+          .replace(/^\d+\s*more$/gi, '') // "33 More"
+          .replace(/^(show|view|load)\s*more$/gi, '') // "Show More"
+          .replace(/^(next|previous)\s*page$/gi, '') // "Next Page"
+          .trim();
+        
+        // If name becomes empty after cleaning, set to null
+        if (cleaned.name.length === 0) {
+          cleaned.name = '';
+        }
+      }
+    }
+    
+    // Clean phone (already formatted in extraction, but double-check)
+    if (cleaned.phone) {
+      const phoneDigits = cleaned.phone.replace(/\D/g, '');
+      if (phoneDigits.length === 10 && /^[6-9]\d{9}$/.test(phoneDigits)) {
+        cleaned.phone = phoneDigits;
+      } else {
+        cleaned.phone = '';
+      }
+    }
+    
+    // Clean address
+    if (cleaned.address) {
+      cleaned.address = cleaned.address.trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        .substring(0, 500);
+    }
+    
+    // Clean category
+    if (cleaned.category) {
+      cleaned.category = cleaned.category.trim()
+        .replace(/\s+/g, ' ')
+        .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+        .substring(0, 100);
+    }
+    
+    return cleaned;
+  }
+
+  // Relaxed deduplication for when we need more businesses
+  deduplicateBusinessesRelaxed(businesses) {
+    console.log(`Using relaxed deduplication for ${businesses.length} businesses...`);
+    const uniqueBusinesses = [];
+    const seenExactBusinesses = new Set(); // For exact duplicates only
+    
+    businesses.forEach((business, index) => {
+      const phoneKey = business.phone || '';
+      const nameKey = business.name ? business.name.toLowerCase().trim() : '';
+      const addressKey = business.address ? business.address.toLowerCase().trim() : '';
+      
+      // More relaxed validation - just need a name OR phone
+      const hasValidName = nameKey && nameKey.length > 2 && !nameKey.match(/^(call|contact|phone|mobile|address|unknown|n\/a)$/i);
+      const hasValidPhone = phoneKey && phoneKey.length === 10 && /^[6-9]\d{9}$/.test(phoneKey);
+      
+      // Additional validation to filter out pagination and navigation elements (relaxed version)
+      const isPaginationElement = nameKey && (
+        nameKey.includes('more') ||
+        nameKey.includes('whatsapp') ||
+        nameKey.includes('show') ||
+        nameKey.includes('view') ||
+        nameKey.includes('next') ||
+        nameKey.includes('previous') ||
+        nameKey.includes('page') ||
+        nameKey.includes('load') ||
+        nameKey.match(/^\d+\s*more$/i) ||
+        nameKey.match(/^\d+$/) ||
+        nameKey.match(/^(\d+,\s*)+\d+\s*more$/i) ||
+        nameKey.match(/^(whatsapp|instagram|facebook|twitter|youtube|linkedin)/i) ||
+        nameKey.match(/^(share|follow|connect|message|chat|call)$/i)
+      );
+      
+      const isValidBusiness = !isPaginationElement && (hasValidName || hasValidPhone);
+      
+      if (!isValidBusiness) {
+        return;
+      }
+      
+      // Create unique key for exact duplicate detection (same name + same phone + same address)
+      const exactBusinessKey = `${nameKey}|${phoneKey}|${addressKey}`;
+      
+      // Allow same business names with different phone numbers or addresses
+      // Only filter out exact duplicates (same name + same phone + same address)
+      const isExactDuplicate = seenExactBusinesses.has(exactBusinessKey);
+      
+      if (!isExactDuplicate) {
+        seenExactBusinesses.add(exactBusinessKey);
+        uniqueBusinesses.push(business);
+        console.log(`-> Added unique business (relaxed): "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      } else {
+        console.log(`-> Removed exact duplicate (relaxed): "${business.name}" (Phone: ${business.phone || 'N/A'}, Address: ${business.address ? business.address.substring(0, 30) + '...' : 'N/A'})`);
+      }
+    });
+    
+    console.log(`Relaxed deduplication complete: ${uniqueBusinesses.length} unique businesses from ${businesses.length} total`);
+    return uniqueBusinesses;
+  }
+}
+app.post('/api/scrape', async (req, res) => {
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  // Validate Justdial URL
+  if (!url.includes('justdial.com')) {
+    return res.status(400).json({ error: 'Invalid Justdial URL' });
+  }
+  
+  try {
+    const scraper = new JustdialScraper();
+    let data = await scraper.scrapeBusinessData(url, detectedCategory);
+    
+    // Apply enhanced deduplication to regular scraping as well
+    console.log('Applying deduplication to regular scraping results...');
+    const bulkScraper = new BulkJustdialScraper(); // Use the enhanced deduplication methods
+    const cleanedData = data.map(b => bulkScraper.cleanAndValidateBusiness(b));
+    const uniqueData = bulkScraper.deduplicateBusinesses(cleanedData);
+    
+    console.log(`Regular scraping - After deduplication: ${uniqueData.length} unique businesses from ${data.length} total`);
+    
+    // Ensure minimum 100 businesses if possible to match Justdial's actual count
+    if (uniqueData.length < 100 && uniqueData.length < data.length) {
+      console.log('Regular scraping - Trying to include more businesses to reach minimum 100...');
+      const relaxedData = bulkScraper.deduplicateBusinessesRelaxed(data);
+      if (relaxedData.length > uniqueData.length) {
+        console.log(`Regular scraping - Using relaxed criteria: ${relaxedData.length} businesses`);
+        data = relaxedData;
+      } else {
+        data = uniqueData;
+      }
+    } else {
+      data = uniqueData;
+    }
+    
+    if (data.length < 100) {
+      console.log(`Warning: Only ${data.length} unique businesses found, which is less than the target 100+ from Justdial`);
+    }
+    
+    res.json({
+      success: true,
+      data: data,
+      count: data.length,
+      uniqueCount: data.length,
+      originalCount: data.length
+    });
+  } catch (error) {
+    console.error('Scraping error:', error);
+    res.status(500).json({ 
+      error: 'Failed to scrape data',
+      message: error.message 
+    });
+  }
+});
+
+// Bulk Scrape Justdial URL for 250-350 businesses (new endpoint)
+app.post('/api/bulk-scrape', async (req, res) => {
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  // Validate URL format
+  if (!url.includes('justdial.com') && !url.includes('google.com/maps')) {
+    console.log(`Invalid URL provided: ${url}`);
+    return res.status(400).json({ error: 'Only Justdial and Google Maps URLs are supported' });
+  }
+  
+  // Log URL for debugging
+  console.log(`Starting bulk scrape for URL: ${url}`);
+  console.log(`Detected category: ${detectedCategory || 'Not provided'}`);
+  
+  // Check if URL looks like a valid Justdial URL
+  if (url.includes('justdial.com')) {
+    const justdialPattern = /justdial\.com\/([A-Za-z]+)\/(.+)/;
+    const match = url.match(justdialPattern);
+    if (!match) {
+      console.log(`Invalid Justdial URL format: ${url}`);
+      return res.status(400).json({ error: 'Invalid Justdial URL format. Expected: justdial.com/City/Category' });
+    }
+    const [, city, category] = match;
+    console.log(`Parsed Justdial URL - City: ${city}, Category: ${category}`);
+  }
+  
+  // Set up Server-Sent Events for progress tracking
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+  
+  const progressCallback = (progress) => {
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  };
+  
+  try {
+    const bulkScraper = new BulkJustdialScraper();
+    bulkScraper.setProgressCallback(progressCallback);
+    
+    // Send initial progress
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'starting'
+    });
+    
+    const data = await bulkScraper.scrapeBulkBusinessData(url);
+    
+    // Send final progress
+    progressCallback({
+      current: data.length,
+      target: 250,
+      percentage: 100,
+      page: 0,
+      status: 'completed',
+      finalData: data
+    });
+    
+    // Close the connection
+    res.write(`data: ${JSON.stringify({ success: true, data: data, count: data.length, finished: true })}\n\n`);
+    res.end();
+    
+  } catch (error) {
+    console.error('Bulk scraping error:', error);
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'error',
+      error: error.message
+    });
+    
+    res.write(`data: ${JSON.stringify({ success: false, error: error.message, finished: true })}\n\n`);
+    res.end();
+  }
+});
+
+// Legacy endpoint alias for backward compatibility
+app.post('/api/justdial-bulk-scrape', async (req, res) => {
+  // Redirect to the new bulk scrape endpoint
+  console.log('Legacy endpoint /api/justdial-bulk-scrape called, redirecting to /api/bulk-scrape');
+  
+  // Set up Server-Sent Events for progress tracking
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'Cache-Control'
+  });
+  
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  // Validate Justdial URL
+  if (!url.includes('justdial.com')) {
+    return res.status(400).json({ error: 'Invalid Justdial URL' });
+  }
+  
+  const progressCallback = (progress) => {
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  };
+  
+  try {
+    const bulkScraper = new BulkJustdialScraper();
+    bulkScraper.setProgressCallback(progressCallback);
+    
+    // Send initial progress
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'starting'
+    });
+    
+    const data = await bulkScraper.scrapeBulkBusinessData(url);
+    
+    // Send final progress
+    progressCallback({
+      current: data.length,
+      target: 250,
+      percentage: 100,
+      page: 0,
+      status: 'completed',
+      finalData: data
+    });
+    
+    // Close the connection
+    res.write(`data: ${JSON.stringify({ success: true, data: data, count: data.length, finished: true })}\n\n`);
+    res.end();
+    
+  } catch (error) {
+    console.error('Bulk scraping error:', error);
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      page: 0,
+      status: 'error',
+      error: error.message
+    });
+    
+    res.write(`data: ${JSON.stringify({ success: false, error: error.message, finished: true })}\n\n`);
+    res.end();
+  }
+});
+
+// Export to Excel
+app.post('/api/export/excel', async (req, res) => {
+  try {
+    const { data } = req.body;
+    
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return res.status(400).json({ error: 'No data to export' });
+    }
+
+    const exportData = data.map(business => ({
+      'Business Name': business.name || '',
+      'Phone Number': business.phone || '',
+      'Address': business.address || '',
+      'City': business.city || '',
+      'Category': business.category || '',
+      'Image': business.image || ''
+    }));
+
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(exportData);
+    xlsx.utils.book_append_sheet(wb, ws, 'Business Data');
+    
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="justdial-business-data.xlsx"');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({ error: 'Failed to export Excel' });
+  }
+});
+
+// Export to CSV
+app.post('/api/export/csv', async (req, res) => {
+  try {
+    const { data } = req.body;
+    
+    if (!data || !Array.isArray(data) || data.length === 0) {
+      return res.status(400).json({ error: 'No data to export' });
+    }
+
+    const headers = ['Business Name', 'Phone Number', 'Address', 'City', 'Category', 'Image'];
+    const rows = data.map(business => [
+      business.name || '',
+      business.phone || '',
+      business.address || '',
+      business.city || '',
+      business.category || '',
+      business.image || ''
+    ]);
+
+    const csvContent = [headers, ...rows]
+      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="justdial-business-data.csv"');
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Export error:', error);
+    res.status(500).json({ error: 'Failed to export CSV' });
+  }
+});
+
+// ==================== End Justdial Scraper ====================
 
 // Run cleanup every hour
 setInterval(cleanupOldFiles, 60 * 60 * 1000);

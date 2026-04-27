@@ -295,6 +295,12 @@ const History = () => {
     setCompanies(prev => prev.filter(company => company._id !== companyId));
   };
 
+  const handleUpdateCompany = (updatedCompany) => {
+    setCompanies(prev => prev.map(company => 
+      company._id === updatedCompany._id ? updatedCompany : company
+    ));
+  };
+
   const handleDeleteAll = async () => {
     if (!confirm(`Delete ALL ${companies.length} companies?`)) return;
     
@@ -604,7 +610,7 @@ const History = () => {
 
             {/* Company List */}
             <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden border border-white/50">
-              <CompanyList companies={currentCompanies} onDeleteCompany={handleDeleteCompany} searchTerm={manualFilters.search} filter={filter} />
+              <CompanyList companies={currentCompanies} onDeleteCompany={handleDeleteCompany} onUpdateCompany={handleUpdateCompany} searchTerm={manualFilters.search} filter={filter} />
               
               {/* Pagination */}
               {filteredCompanies.length > itemsPerPage && (
