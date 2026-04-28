@@ -801,13 +801,29 @@ const Upload = () => {
                            company['Website URL'] || company['Web Address'] ||
                            ''; // Fallback empty website
         
-        const address = findField(['address', 'location', 'addr', 'city', 'state', 'area', 'street', 'building']) || 
+        const address = findField(['address', 'location', 'addr', 'area', 'street', 'building']) || 
                        company.address || company.Address || company.location || company.Location || 
-                       company['Address'] || company['Location'] || company['City'] || company['State'] ||
-                       company['Area'] || company['Street'] || company['Building'] ||
+                       company['Address'] || company['Location'] || company['Area'] || company['Street'] || 
+                       company['Building'] ||
                        ''; // Fallback empty address
         
-        console.log('Extracted data:', { companyName, phoneNumber, emailAddress, websiteUrl, address });
+        // Extract city specifically (separate from address)
+        const city = findField(['city']) || 
+                    company.city || company.City || company['City'] || company['city'] ||
+                    ''; // Fallback empty city
+        
+        // If no dedicated city field found, try to extract city from address
+        let extractedCity = city;
+        if (!extractedCity && address) {
+          // Try to extract city from address using regex patterns
+          const cityMatch = address.match(/,?\s*([A-Za-z\s]+),?\s*[A-Z]{2,}|\b([A-Za-z\s]+)\b,?\s*[A-Z]{2,}/);
+          if (cityMatch) {
+            extractedCity = cityMatch[1] || cityMatch[2];
+            extractedCity = extractedCity.trim();
+          }
+        }
+        
+        console.log('Extracted data:', { companyName, phoneNumber, emailAddress, websiteUrl, address, city: extractedCity });
         
         // Skip if missing essential data
         if (!companyName || !phoneNumber || companyName.trim() === '' || phoneNumber.trim() === '') {
@@ -827,6 +843,7 @@ const Upload = () => {
           email: processedEmailAddress,
           website: processedWebsiteUrl,
           address: address,
+          city: extractedCity,
           message: `Hello ${processedCompanyName}, we would like to connect with you...`,
           status: 'pending'
         };

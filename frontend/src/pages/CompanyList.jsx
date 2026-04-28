@@ -20,8 +20,8 @@ const CompanyList = () => {
   const [isCreatingCity, setIsCreatingCity] = useState(false);
   const [selectedCity, setSelectedCity] = useState('all');
 
-  // Combined cities list (custom cities + cities from company data)
-  const allCities = [...new Set([...customCities, ...companies.filter(c => c.city).map(c => c.city)])].sort();
+  // Only manual cities list
+  const allCities = [...customCities].sort();
 
   useEffect(() => {
     fetchCompanies();
@@ -167,7 +167,7 @@ const CompanyList = () => {
     const trimmedCity = newCity.trim();
     
     // Check if city already exists
-    if (allCities.includes(trimmedCity)) {
+    if (customCities.includes(trimmedCity)) {
       toast.error('City already exists');
       return;
     }
@@ -341,7 +341,7 @@ const CompanyList = () => {
                 className="appearance-none bg-white border border-gray-300 rounded-lg px-4 py-2 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">All Cities</option>
-                {allCities.map((city, index) => (
+                {customCities.map((city, index) => (
                   <option key={index} value={city}>
                     {city}
                   </option>
@@ -434,12 +434,12 @@ const CompanyList = () => {
         )}
 
         {/* City Assignment Buttons */}
-        {selectedCompanies.size > 0 && allCities.length > 0 && (
+        {selectedCompanies.size > 0 && customCities.length > 0 && (
           <div className="mt-4 pt-4 border-t border-gray-200">
             <div className="flex items-center space-x-2">
               <span className="text-sm text-gray-600">Assign city:</span>
               <div className="flex flex-wrap gap-2">
-                {allCities.map((city, index) => (
+                {customCities.map((city, index) => (
                   <button
                     key={index}
                     onClick={() => handleAssignToCity(city)}

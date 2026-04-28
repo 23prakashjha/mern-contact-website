@@ -120,6 +120,18 @@ const generalApiLimiter = rateLimit({
   skipSuccessfulRequests: false,
   skipFailedRequests: false
 });
+
+// More lenient rate limiting for companies endpoint (frequently accessed by frontend)
+const companiesLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 1000, // Much higher limit for companies endpoint
+  message: { error: 'Too many requests to companies API, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+  skipFailedRequests: false
+});
+
 app.use('/api/', generalApiLimiter);
 
 // Add more restrictive rate limiting for expensive operations
@@ -1957,7 +1969,7 @@ app.put('/api/companies/:id/email', async (req, res) => {
 // Add a new company
 app.post('/api/companies', async (req, res) => {
     try {
-        const { company, phone, email, website, address, message, status } = req.body;
+        const { company, phone, email, website, address, city, message, status } = req.body;
         
         // Validate required fields
         if (!company || !phone) {
@@ -1989,6 +2001,7 @@ app.post('/api/companies', async (req, res) => {
             email: email || '',
             website: website || '',
             address: address || '',
+            city: city || '',
             message: message || `Hello ${company}, we would like to connect with you...`,
             status: status || 'pending',
             createdAt: new Date()
@@ -2012,7 +2025,7 @@ app.post('/api/companies', async (req, res) => {
 });
 
 // Get all companies with their status and filtering support
-app.get('/api/companies', async (req, res) => {
+app.get('/api/companies', companiesLimiter, async (req, res) => {
     try {
         const { category, city, search, page = 1, limit = 20 } = req.query;
         let filter = {};

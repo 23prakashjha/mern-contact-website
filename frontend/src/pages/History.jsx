@@ -166,7 +166,7 @@ const History = () => {
       const duplicateIds = duplicates.map(dup => dup.duplicate._id);
       
       for (const id of duplicateIds) {
-        await axios.delete(`${API_BASE_URL}/companies/${id}`);
+        await api.delete(`/api/companies/${id}`);
       }
       
       alert(`Removed ${duplicates.length} duplicates`);
