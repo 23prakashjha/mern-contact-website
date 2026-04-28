@@ -98,10 +98,10 @@ app.use(cors({
     credentials: true
 }));
 
-// Rate limiting for Excel Scraper endpoints (more restrictive)
+// Rate limiting for Excel Scraper endpoints (more lenient for development)
 const excelScraperLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 80, // limit each IP to 80 requests per windowMs
+    max: 200, // Increased from 80 to 200 requests per windowMs for development
     message: { error: 'Too many Excel Scraper requests, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -113,7 +113,7 @@ app.use('/api/excel-scraper/', excelScraperLimiter);
 // Rate limiting for general API endpoints (more lenient for frontend operations)
 const generalApiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Increased from 50 to 200 requests per windowMs
+  max: 500, // Increased from 200 to 500 requests per windowMs for development
   message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -124,7 +124,7 @@ const generalApiLimiter = rateLimit({
 // More lenient rate limiting for companies endpoint (frequently accessed by frontend)
 const companiesLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Much higher limit for companies endpoint
+  max: 2000, // Increased from 1000 to 2000 for development
   message: { error: 'Too many requests to companies API, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -134,10 +134,10 @@ const companiesLimiter = rateLimit({
 
 app.use('/api/', generalApiLimiter);
 
-// Add more restrictive rate limiting for expensive operations
+// Add more lenient rate limiting for expensive operations (development)
 const expensiveOperationsLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 30, // Lower limit for expensive operations
+  max: 100, // Increased from 30 to 100 for development
   message: { error: 'Too many expensive operations, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,

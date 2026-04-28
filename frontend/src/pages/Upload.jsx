@@ -286,13 +286,25 @@ const Upload = () => {
     return text.substring(0, maxLength) + ' ----';
   };
 
-  // Fetch existing companies data
+  // Fetch existing companies data with request queue and caching
   const fetchCompanies = async () => {
     try {
-      const response = await makeApiCall(async () => {
-        return await axios.get(`${API_BASE_URL}/companies?limit=1000`);
-      }, 3, 1000);
-      setCompanies(response.data.companies || response.data || []);
+      // Check cache first
+      const cachedCompanies = getCachedData('companies');
+      if (cachedCompanies) {
+        setCompanies(cachedCompanies);
+        return;
+      }
+
+      const response = await requestQueue.add(async () => {
+        return await makeApiCall(async () => {
+          return await axios.get(`${API_BASE_URL}/companies?limit=1000`);
+        }, 3, 1000);
+      });
+      
+      const companiesData = response.data.companies || response.data || [];
+      setCompanies(companiesData);
+      setCachedData('companies', companiesData);
     } catch (error) {
       console.error('Failed to fetch companies:', error);
     }
@@ -549,16 +561,21 @@ const Upload = () => {
     }
   };
 
-  // Helper function for rate-limited API calls with retry logic
-  const makeApiCall = async (apiCall, maxRetries = 3, delay = 1000) => {
+  // Advanced rate limiting with exponential backoff and jitter
+  const makeApiCall = async (apiCall, maxRetries = 5, baseDelay = 1000) => {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const result = await apiCall();
         return result;
       } catch (error) {
         if (error.response?.status === 429) {
-          console.log(`🔄 Rate limited (attempt ${attempt}/${maxRetries}), waiting ${delay * attempt}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay * attempt));
+          // Exponential backoff with jitter: delay = baseDelay * (2^(attempt-1)) + random jitter
+          const exponentialDelay = baseDelay * Math.pow(2, attempt - 1);
+          const jitter = Math.random() * 1000; // Random jitter up to 1 second
+          const totalDelay = exponentialDelay + jitter;
+          
+          console.log(`🔄 Rate limited (attempt ${attempt}/${maxRetries}), waiting ${Math.round(totalDelay)}ms...`);
+          await new Promise(resolve => setTimeout(resolve, totalDelay));
           continue;
         }
         throw error; // Re-throw non-429 errors
@@ -567,56 +584,141 @@ const Upload = () => {
     throw new Error('Max retries exceeded for API call');
   };
 
-  // Fetch recent processed data
+  // Request queue to prevent concurrent API calls
+  class RequestQueue {
+    constructor() {
+      this.queue = [];
+      this.processing = false;
+    }
+
+    async add(request) {
+      return new Promise((resolve, reject) => {
+        this.queue.push({ request, resolve, reject });
+        this.process();
+      });
+    }
+
+    async process() {
+      if (this.processing || this.queue.length === 0) return;
+      
+      this.processing = true;
+      
+      while (this.queue.length > 0) {
+        const { request, resolve, reject } = this.queue.shift();
+        
+        try {
+          const result = await request();
+          resolve(result);
+        } catch (error) {
+          reject(error);
+        }
+        
+        // Add small delay between requests to prevent overwhelming the server
+        if (this.queue.length > 0) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      this.processing = false;
+    }
+  }
+
+  const requestQueue = new RequestQueue();
+
+  // Simple in-memory cache to reduce redundant API calls
+  const cache = new Map();
+  const CACHE_TTL = 30000; // 30 seconds cache TTL
+
+  const getCachedData = (key) => {
+    const cached = cache.get(key);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.data;
+    }
+    return null;
+  };
+
+  const setCachedData = (key, data) => {
+    cache.set(key, {
+      data,
+      timestamp: Date.now()
+    });
+  };
+
+  // Fetch recent processed data with request queue and caching
   const fetchRecentProcessedData = async () => {
     try {
-      const historyResponse = await makeApiCall(async () => {
-        return await axios.get('http://localhost:5000/api/excel-scraper/history');
-      }, 3, 2000);
+      // Check cache first
+      const cachedHistory = getCachedData('processedHistory');
+      if (cachedHistory) {
+        await processHistoryData(cachedHistory);
+        return;
+      }
+
+      const historyResponse = await requestQueue.add(async () => {
+        return await makeApiCall(async () => {
+          return await axios.get('http://localhost:5000/api/excel-scraper/history');
+        }, 3, 2000);
+      });
       
       const recentHistory = historyResponse.data;
+      setCachedData('processedHistory', recentHistory);
+      await processHistoryData(recentHistory);
       
-      if (recentHistory.length > 0) {
-        const mostRecent = recentHistory[0];
-        
-        // Check if file exists before trying to fetch
-        try {
-          const checkResponse = await makeApiCall(async () => {
-            return await axios.get(`http://localhost:5000/api/excel-scraper/check/${mostRecent.processedFilename}`);
-          }, 2, 1000);
-
-          if (checkResponse.data.exists) {
-            setLastProcessedFile(mostRecent);
-            await fetchProcessedData(mostRecent.processedFilename);
-          } else {
-            // Clear expired file references
-            setLastProcessedFile(null);
-            setProcessedData(null);
-            setDataError('');
-          }
-        } catch (checkError) {
-          // Clear references if check fails
-          setLastProcessedFile(null);
-          setProcessedData(null);
-          setDataError('');
-        }
-      } else {
-        setLastProcessedFile(null);
-        setProcessedData(null);
-      }
     } catch (err) {
       setLastProcessedFile(null);
       setProcessedData(null);
     }
   };
 
-  // Auto-load data on component mount
+  // Helper function to process history data
+  const processHistoryData = async (recentHistory) => {
+    if (recentHistory.length > 0) {
+      const mostRecent = recentHistory[0];
+      
+      // Check if file exists before trying to fetch
+      try {
+        const checkResponse = await requestQueue.add(async () => {
+          return await makeApiCall(async () => {
+            return await axios.get(`http://localhost:5000/api/excel-scraper/check/${mostRecent.processedFilename}`);
+          }, 2, 1000);
+        });
+
+        if (checkResponse.data.exists) {
+          setLastProcessedFile(mostRecent);
+          await fetchProcessedData(mostRecent.processedFilename);
+        } else {
+          // Clear expired file references
+          setLastProcessedFile(null);
+          setProcessedData(null);
+          setDataError('');
+        }
+      } catch (checkError) {
+        // Clear references if check fails
+        setLastProcessedFile(null);
+        setProcessedData(null);
+        setDataError('');
+      }
+    } else {
+      setLastProcessedFile(null);
+      setProcessedData(null);
+    }
+  };
+
+  // Auto-load data on component mount with staggered requests
   useEffect(() => {
     const initializeData = async () => {
       // Add small delay to ensure smooth navigation
       await new Promise(resolve => setTimeout(resolve, 100));
-      await fetchCompanies();
-      await fetchRecentProcessedData();
+      
+      // Stagger requests to prevent overwhelming the server
+      try {
+        await fetchCompanies();
+        // Add delay between requests
+        await new Promise(resolve => setTimeout(resolve, 500));
+        await fetchRecentProcessedData();
+      } catch (error) {
+        console.error('Initialization failed:', error);
+      }
     };
     initializeData();
   }, []);
