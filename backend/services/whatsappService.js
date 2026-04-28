@@ -1,43 +1,12 @@
-const twilio = require('twilio');
-
 class WhatsAppService {
   constructor() {
-    if (process.env.TWILIO_ACCOUNT_SID && 
-        process.env.TWILIO_AUTH_TOKEN && 
-        process.env.TWILIO_ACCOUNT_SID.startsWith('AC')) {
-      this.client = twilio(
-        process.env.TWILIO_ACCOUNT_SID,
-        process.env.TWILIO_AUTH_TOKEN
-      );
-      this.fromWhatsAppNumber = process.env.TWILIO_PHONE_NUMBER;
-    } else {
-      console.warn('Valid Twilio credentials not provided. WhatsApp service will be disabled.');
-      this.client = null;
-      this.fromWhatsAppNumber = null;
-    }
+    console.warn('WhatsApp service has been disabled - Twilio package removed');
+    this.client = null;
+    this.fromWhatsAppNumber = null;
   }
 
   async sendWhatsAppMessage(to, message) {
-    if (!this.client) {
-      return { success: false, error: 'WhatsApp service not configured' };
-    }
-
-    try {
-      // Format phone number for WhatsApp
-      const formattedNumber = this.formatPhoneNumber(to);
-      
-      const result = await this.client.messages.create({
-        body: message,
-        from: `whatsapp:${this.fromWhatsAppNumber}`,
-        to: `whatsapp:${formattedNumber}`,
-      });
-
-      console.log('WhatsApp message sent successfully:', result.sid);
-      return { success: true, messageId: result.sid };
-    } catch (error) {
-      console.error('Error sending WhatsApp message:', error);
-      return { success: false, error: error.message };
-    }
+    return { success: false, error: 'WhatsApp service is not available - Twilio package has been removed' };
   }
 
   async sendBulkWhatsAppMessages(messages) {

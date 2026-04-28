@@ -1613,8 +1613,8 @@ const processExcelFile = async (filePath) => {
 
 // Initialize communication services
 const emailService = new EmailService();
-const whatsappService = new WhatsAppService();
-const smsService = new SMSService();
+const whatsappService = new WhatsAppService(); // Disabled - Twilio package removed
+const smsService = new SMSService(); // Disabled - Twilio package removed
 
 // Helper function to clean category names
 function cleanCategoryName(category) {
