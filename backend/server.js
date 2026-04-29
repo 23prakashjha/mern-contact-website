@@ -19,6 +19,1115 @@ const EmailService = require('./services/emailService');
 const WhatsAppService = require('./services/whatsappService');
 const SMSService = require('./services/smsService');
 
+// Add proxy rotation and user agent management for Justdial Scraper
+class JustdialProxyRotator {
+  constructor() {
+    this.userAgents = [
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/120.0',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15'
+    ];
+  }
+  
+  getRandomUserAgent() {
+    return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
+  }
+  
+  getRandomViewport() {
+    const viewports = [
+      { width: 1366, height: 768 },
+      { width: 1440, height: 900 },
+      { width: 1536, height: 864 },
+      { width: 1920, height: 1080 },
+      { width: 1280, height: 720 }
+    ];
+    return viewports[Math.floor(Math.random() * viewports.length)];
+  }
+}
+
+const justdialProxyRotator = new JustdialProxyRotator();
+
+// Helper function to clean and format phone numbers correctly for Justdial
+function formatJustdialPhoneNumber(phone) {
+  if (!phone) return '';
+  
+  // Remove all non-numeric characters
+  let cleanPhone = phone.toString().replace(/\D/g, '');
+  
+  // Handle different formats
+  if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+    // Remove country code 91
+    cleanPhone = cleanPhone.substring(2);
+  } else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+    // Remove leading 0
+    cleanPhone = cleanPhone.substring(1);
+  } else if (cleanPhone.length === 13 && cleanPhone.startsWith('+91')) {
+    // Remove +91
+    cleanPhone = cleanPhone.substring(3);
+  } else if (cleanPhone.length === 10 && cleanPhone.match(/^[6-9]\d{9}$/)) {
+    // Valid Indian mobile number (starts with 6-9)
+    return cleanPhone;
+  } else if (cleanPhone.length === 10 && cleanPhone.match(/^[0-9]{10}$/)) {
+    // Generic 10-digit number - validate if it's a valid Indian mobile
+    if (cleanPhone.match(/^[6-9]\d{9}$/)) {
+      return cleanPhone;
+    }
+    return ''; // Not a valid Indian mobile number
+  } else if (cleanPhone.length > 10) {
+    // Try to extract last 10 digits
+    cleanPhone = cleanPhone.slice(-10);
+    if (cleanPhone.match(/^[6-9]\d{9}$/)) {
+      return cleanPhone;
+    }
+    return ''; // Not a valid Indian mobile number
+  }
+  
+  // Final validation - only return valid Indian mobile numbers
+  if (cleanPhone.length === 10 && cleanPhone.match(/^[6-9]\d{9}$/)) {
+    return cleanPhone;
+  }
+  
+  return ''; // Invalid phone number
+}
+
+// Helper function to validate phone number and return validation status for Justdial
+function validateJustdialPhoneNumber(phone) {
+  if (!phone) return { valid: false, reason: 'Empty phone number' };
+  
+  const formattedPhone = formatJustdialPhoneNumber(phone);
+  if (!formattedPhone) return { valid: false, reason: 'Invalid format' };
+  
+  // Additional validation for Indian mobile numbers
+  if (!formattedPhone.match(/^[6-9]\d{9}$/)) {
+    return { valid: false, reason: 'Not a valid Indian mobile number' };
+  }
+  
+  return { valid: true, reason: 'Valid Indian mobile number' };
+}
+
+// Extract city from Justdial URL
+function extractCityFromJustdialUrl(url) {
+  const match = url.match(/\.com\/([^\/]+)\//);
+  if (match && match[1]) {
+    return match[1].charAt(0).toUpperCase() + match[1].slice(1);
+  }
+  return 'Unknown';
+}
+
+// Enhanced Justdial Scraper Service
+class JustdialScraper {
+  constructor() {
+    this.browser = null;
+    this.page = null;
+  }
+
+  async initialize() {
+    console.log('🔄 Initializing Justdial browser...');
+    
+    this.browser = await puppeteer.launch({
+      headless: false,
+      protocolTimeout: 300000,
+      defaultViewport: null,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu',
+        '--disable-web-security',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-default-apps',
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-renderer-backgrounding',
+        '--disable-background-networking',
+        '--disable-blink-features=AutomationControlled'
+      ]
+    });
+    
+    this.page = await this.browser.newPage();
+    
+    // Anti-detection
+    await this.page.evaluateOnNewDocument(() => {
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+      
+      window.chrome = {
+        runtime: {},
+      };
+    });
+    
+    await this.page.setUserAgent(justdialProxyRotator.getRandomUserAgent());
+    await this.page.setViewport(justdialProxyRotator.getRandomViewport());
+    
+    await this.page.setExtraHTTPHeaders({
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Referer': 'https://www.google.com/',
+      'DNT': '1'
+    });
+    
+    console.log('✅ Justdial browser initialized successfully');
+  }
+
+  async scrapeBusinessData(url, detectedCategory = '') {
+    try {
+      await this.initialize();
+      
+      console.log('🌐 Navigating to Justdial URL:', url);
+      
+      await this.page.goto(url, { 
+        waitUntil: 'networkidle2', 
+        timeout: 60000 
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      const city = extractCityFromJustdialUrl(url);
+      console.log(`📍 City detected: ${city}`);
+      
+      await this.waitForBusinessListings();
+      
+      const businessData = await this.extractAllBusinessesWithPagination(city, detectedCategory);
+      
+      console.log(`✅ Total businesses found: ${businessData.length}`);
+      
+      // Log sample data
+      if (businessData.length > 0) {
+        console.log('\n📊 Sample extracted Justdial data:');
+        console.log('='.repeat(60));
+        const sample = businessData[0];
+        console.log(`Name: ${sample.name}`);
+        console.log(`Phone: ${sample.phone || 'N/A'} (${sample.phone ? formatJustdialPhoneNumber(sample.phone) : 'N/A'})`);
+        console.log(`City: ${sample.city || 'N/A'}`);
+        console.log(`Category: ${sample.category || 'N/A'}`);
+        console.log(`Image: ${sample.image ? 'Yes' : 'No'}`);
+        console.log('='.repeat(60));
+      }
+      
+      return businessData;
+      
+    } catch (error) {
+      console.error('❌ Justdial scraping error:', error);
+      throw new Error(`Failed to scrape Justdial data: ${error.message}`);
+    } finally {
+      await this.close();
+    }
+  }
+
+  async waitForBusinessListings() {
+    console.log('⏳ Waiting for Justdial business listings to load...');
+    
+    const selectors = [
+      '.resultbox',
+      '.jsx-2622435384',
+      '[data-testid="result-card"]',
+      '.store-details',
+      '.result-card',
+      '.listing-card',
+      'div[class*="result"]',
+      'div[class*="store"]'
+    ];
+    
+    let found = false;
+    for (const selector of selectors) {
+      try {
+        await this.page.waitForSelector(selector, { timeout: 10000 });
+        console.log(`✅ Found Justdial selector: ${selector}`);
+        found = true;
+        break;
+      } catch (e) {
+        // Continue
+      }
+    }
+    
+    if (!found) {
+      console.log('⚠️ No Justdial listings found with standard selectors');
+    }
+  }
+
+  async extractAllBusinessesWithPagination(city, detectedCategory) {
+    let allBusinesses = [];
+    let currentPage = 1;
+    let hasNextPage = true;
+    
+    while (hasNextPage && currentPage <= 20) {
+      console.log(`\n📄 === Processing Justdial Page ${currentPage} ===`);
+      
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      await this.autoScroll();
+      
+      const businesses = await this.extractBusinessesFromPage(city, detectedCategory);
+      console.log(`📊 Found ${businesses.length} businesses on Justdial page ${currentPage}`);
+      
+      allBusinesses.push(...businesses);
+      console.log(`📈 Total businesses so far: ${allBusinesses.length}`);
+      
+      hasNextPage = await this.goToNextPage();
+      if (hasNextPage) {
+        currentPage++;
+        await new Promise(resolve => setTimeout(resolve, 3000));
+      }
+    }
+    
+    const uniqueBusinesses = this.removeDuplicates(allBusinesses);
+    console.log(`\n🎯 === Justdial Scraping Complete ===`);
+    console.log(`📄 Total pages processed: ${currentPage}`);
+    console.log(`📊 Total businesses found: ${allBusinesses.length}`);
+    console.log(`✨ Unique businesses: ${uniqueBusinesses.length}`);
+    
+    return uniqueBusinesses;
+  }
+
+  async autoScroll() {
+    await this.page.evaluate(async () => {
+      await new Promise((resolve) => {
+        let totalHeight = 0;
+        let distance = 400;
+        let timer = setInterval(() => {
+          let scrollHeight = document.body.scrollHeight;
+          window.scrollBy(0, distance);
+          totalHeight += distance;
+          
+          if (totalHeight >= scrollHeight) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 500);
+      });
+    });
+  }
+
+  async extractBusinessesFromPage(city, detectedCategory) {
+    return await this.safePageEvaluate((defaultCity, detectedCat) => {
+      const businesses = [];
+      const processedPhones = new Set(); // Track processed phone numbers
+      
+      // Helper function to format phone number
+      function formatPhoneNumberLocal(phone) {
+        if (!phone) return '';
+        
+        let cleanPhone = phone.toString().replace(/\D/g, '');
+        
+        // Remove country code 91 if present
+        if (cleanPhone.length === 12 && cleanPhone.startsWith('91')) {
+          cleanPhone = cleanPhone.substring(2);
+        }
+        // Remove leading 0
+        else if (cleanPhone.length === 11 && cleanPhone.startsWith('0')) {
+          cleanPhone = cleanPhone.substring(1);
+        }
+        // Remove +91
+        else if (cleanPhone.length === 13 && cleanPhone.startsWith('91')) {
+          cleanPhone = cleanPhone.substring(2);
+        }
+        
+        // Return only if it's a 10-digit number
+        if (cleanPhone.length === 10) {
+          return cleanPhone;
+        }
+        
+        // Try to extract last 10 digits
+        if (cleanPhone.length > 10) {
+          cleanPhone = cleanPhone.slice(-10);
+          if (cleanPhone.length === 10) {
+            return cleanPhone;
+          }
+        }
+        
+        return '';
+      }
+      
+      // Enhanced function to click all "Show Number" buttons with better detection
+      const clickShowNumberButtons = () => {
+        let clickedCount = 0;
+        
+        // Comprehensive list of show number button selectors
+        const selectors = [
+          'button[class*="show"]',
+          'button[class*="number"]',
+          'span[class*="show"]',
+          'div[onclick*="showNumber"]',
+          '.show-number',
+          '.showNumber',
+          '[data-testid*="show-number"]',
+          '.call-action',
+          '.contact-action',
+          '.reveal-number',
+          '.view-number',
+          '.get-number',
+          '.phone-reveal'
+        ];
+        
+        // Try specific selectors first
+        for (const selector of selectors) {
+          const elements = document.querySelectorAll(selector);
+          elements.forEach(element => {
+            const text = (element.textContent || '').toLowerCase();
+            if (text.includes('show') || text.includes('number') || text.includes('call')) {
+              try {
+                element.click();
+                clickedCount++;
+                console.log(`🖱️ Clicked show number button via selector: ${selector}`);
+              } catch(e) {
+                console.log('Failed to click element:', e.message);
+              }
+            }
+          });
+        }
+        
+        // Fallback: Find all elements with text containing show number variations
+        const allElements = document.querySelectorAll('button, span, div, a, [onclick]');
+        allElements.forEach(element => {
+          const text = (element.textContent || '').toLowerCase();
+          const className = (element.className || '').toLowerCase();
+          const onclick = (element.getAttribute('onclick') || '').toLowerCase();
+          const dataAction = (element.getAttribute('data-action') || '').toLowerCase();
+          
+          // More comprehensive text matching
+          const showNumberPatterns = [
+            'show number',
+            'show the number',
+            'view number',
+            'get number',
+            'reveal number',
+            'click to show',
+            'display number',
+            'phone number',
+            'contact number'
+          ];
+          
+          const shouldClick = showNumberPatterns.some(pattern => 
+            text.includes(pattern) || 
+            className.includes('show') || 
+            className.includes('number') ||
+            onclick.includes('show') ||
+            onclick.includes('number') ||
+            dataAction.includes('show') ||
+            dataAction.includes('number')
+          );
+          
+          if (shouldClick && element.style.display !== 'none' && !element.disabled) {
+            try {
+              // Scroll element into view first
+              element.scrollIntoView({ behavior: 'instant', block: 'center' });
+              
+              // Small delay then click
+              setTimeout(() => {
+                element.click();
+                clickedCount++;
+                console.log(`🖱️ Clicked show number button via text: ${text.substring(0, 30)}`);
+              }, 100);
+            } catch(e) {
+              console.log('Failed to click element:', e.message);
+            }
+          }
+        });
+        
+        console.log(`📞 Total show number buttons clicked: ${clickedCount}`);
+        return clickedCount;
+      };
+      
+      // Click all show number buttons
+      const buttonsClicked = clickShowNumberButtons();
+      
+      // Wait for numbers to appear after clicking buttons
+      // Use synchronous wait since we're in page.evaluate context
+      const waitForNumbers = () => {
+        let attempts = 0;
+        const maxAttempts = 10;
+        
+        const checkInterval = setInterval(() => {
+          attempts++;
+          
+          // Check if any phone numbers have appeared
+          const phoneElements = document.querySelectorAll('[class*="phone"], [class*="tel"], [class*="number"], a[href*="tel:"]');
+          let hasNumbers = false;
+          
+          phoneElements.forEach(el => {
+            const text = el.textContent || '';
+            if (text.match(/\d{10}/)) {
+              hasNumbers = true;
+            }
+          });
+          
+          if (hasNumbers || attempts >= maxAttempts) {
+            clearInterval(checkInterval);
+          }
+        }, 300);
+      };
+      
+      // Wait for numbers to appear (synchronous)
+      waitForNumbers();
+      
+      // Find all listing containers
+      const listingSelectors = [
+        '.resultbox',
+        '.jsx-2622435384',
+        '[data-testid="result-card"]',
+        '.store-details',
+        '.result-card',
+        '.listing-card',
+        'div[class*="result"]',
+        'div[class*="store"]',
+        'div[class*="listing"]',
+        'li[class*="result"]'
+      ];
+      
+      let listings = [];
+      for (const selector of listingSelectors) {
+        const elements = document.querySelectorAll(selector);
+        if (elements.length > 0) {
+          listings = elements;
+          console.log(`Found ${elements.length} Justdial listings with selector: ${selector}`);
+          break;
+        }
+      }
+      
+      if (listings.length === 0) {
+        console.log('No Justdial listings found');
+        return businesses;
+      }
+      
+      console.log(`Processing ${listings.length} Justdial listings...`);
+      
+      listings.forEach((listing, index) => {
+        try {
+          const business = {
+            name: '',
+            phone: '',
+            address: '',
+            category: '',
+            city: defaultCity,
+            rating: '',
+            image: '',
+            website: ''
+          };
+          
+          // Extract Business Name
+          const nameSelectors = [
+            '.store-name',
+            '.resultbox-title',
+            'h2', 'h3', 'h4',
+            '.title',
+            '[class*="name"]',
+            '.company-name',
+            '.business-name'
+          ];
+          
+          for (const selector of nameSelectors) {
+            const nameElement = listing.querySelector(selector);
+            if (nameElement) {
+              let name = nameElement.textContent.trim();
+              if (name && name.length > 2 && name.length < 150 && 
+                  !name.includes('Show Number') && 
+                  !name.includes('More')) {
+                business.name = name;
+                console.log(`✅ Found name: ${name.substring(0, 50)}`);
+                break;
+              }
+            }
+          }
+          
+          // Enhanced Phone Number Extraction - Multiple comprehensive strategies
+          let phoneFound = false;
+          let foundPhones = [];
+          
+          // Strategy 1: Look in phone-specific elements after clicking buttons
+          const phoneSelectors = [
+            '.tel-number',
+            '.phone-number',
+            '.mobile-number',
+            '[class*="phone"]',
+            '[class*="tel"]',
+            '[class*="mobile"]',
+            '[class*="contact"]',
+            '.contact-info',
+            '.contact-details',
+            '.phone-info',
+            '.call-info',
+            'a[href*="tel:"]',
+            'span[onclick*="tel:"]',
+            'div[onclick*="tel:"]',
+            '.callnow',
+            '.call-btn',
+            '[data-phone]',
+            '[data-mobile]',
+            '[data-tel]',
+            '.show-number ~ span',
+            '.showNumber + span',
+            '.reveal-number',
+            '.number-display',
+            '.phone-display'
+          ];
+          
+          for (const selector of phoneSelectors) {
+            const phoneElements = listing.querySelectorAll(selector);
+            for (const phoneElement of phoneElements) {
+              // Get phone from multiple sources
+              let phone = phoneElement.textContent.trim() || 
+                         phoneElement.getAttribute('data-phone') || 
+                         phoneElement.getAttribute('data-mobile') || 
+                         phoneElement.getAttribute('data-tel') ||
+                         phoneElement.href || '';
+              
+              // Clean tel: links
+              if (phone.startsWith('tel:')) {
+                phone = phone.replace('tel:', '');
+              }
+              
+              if (phone) {
+                const formattedPhone = formatPhoneNumberLocal(phone);
+                if (formattedPhone && !processedPhones.has(formattedPhone)) {
+                  foundPhones.push(formattedPhone);
+                  console.log(`📞 Found phone via ${selector}: ${formattedPhone}`);
+                }
+              }
+            }
+          }
+          
+          // Strategy 2: Enhanced onclick attribute search
+          if (foundPhones.length === 0) {
+            const elementsWithOnclick = listing.querySelectorAll('[onclick], [data-action]');
+            for (const element of elementsWithOnclick) {
+              const onclick = element.getAttribute('onclick') || '';
+              const dataAction = element.getAttribute('data-action') || '';
+              const combinedText = onclick + ' ' + dataAction;
+              
+              // More comprehensive phone regex patterns
+              const phonePatterns = [
+                /tel:([\+]?[0-9\s\-\(\)]+)/gi,
+                /([\+]?91[-\s]?[6-9]\d{9})/gi,
+                /([6-9]\d{9})/gi,
+                /(\d{3}[-\s]?\d{3}[-\s]?\d{4})/gi,
+                /(\d{5}[-\s]?\d{5})/gi
+              ];
+              
+              for (const pattern of phonePatterns) {
+                const matches = combinedText.match(pattern);
+                if (matches) {
+                  for (let match of matches) {
+                    const cleanMatch = match.replace(/tel:|[^0-9\+]/g, '');
+                    const formattedPhone = formatPhoneNumberLocal(cleanMatch);
+                    if (formattedPhone && !processedPhones.has(formattedPhone)) {
+                      foundPhones.push(formattedPhone);
+                      console.log(`📞 Found phone from attributes: ${formattedPhone}`);
+                    }
+                  }
+                }
+              }
+            }
+          }
+          
+          // Strategy 3: Enhanced text search with multiple patterns
+          if (foundPhones.length === 0) {
+            const listingText = listing.textContent + ' ' + listing.innerHTML;
+            
+            // Comprehensive phone regex patterns for Indian numbers
+            const phonePatterns = [
+              /([\+]?91[-\s]?[6-9]\d{9})/gi,
+              /([6-9]\d{9})/gi,
+              /0?[6-9]\d{9}/gi,
+              /\d{3}[-\s]?\d{3}[-\s]?\d{4}/gi,
+              /\d{5}[-\s]?\d{5}/gi,
+              /\d{4}[-\s]?\d{3}[-\s]?\d{3}/gi,
+              /\d{2}[-\s]?\d{4}[-\s]?\d{4}/gi,
+              /\+?[0-9][0-9\s\-\(\)]{9,}[0-9]/gi
+            ];
+            
+            for (const pattern of phonePatterns) {
+              const matches = listingText.match(pattern);
+              if (matches) {
+                for (let phone of matches) {
+                  const formattedPhone = formatPhoneNumberLocal(phone);
+                  if (formattedPhone && !processedPhones.has(formattedPhone)) {
+                    foundPhones.push(formattedPhone);
+                    console.log(`📞 Found phone from text: ${formattedPhone}`);
+                  }
+                }
+              }
+            }
+          }
+          
+          // Strategy 4: Look for dynamically loaded content
+          if (foundPhones.length === 0) {
+            // Check for elements that might contain phone numbers after dynamic loading
+            const dynamicElements = listing.querySelectorAll('*');
+            for (const element of dynamicElements) {
+              const computedStyle = window.getComputedStyle(element);
+              if (computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden') {
+                const text = element.textContent || '';
+                if (text.match(/\d{10}/) && !text.includes('Show') && !text.includes('More')) {
+                  const formattedPhone = formatPhoneNumberLocal(text);
+                  if (formattedPhone && !processedPhones.has(formattedPhone)) {
+                    foundPhones.push(formattedPhone);
+                    console.log(`📞 Found phone from dynamic content: ${formattedPhone}`);
+                  }
+                }
+              }
+            }
+          }
+          
+          // Use the first valid phone number found
+          if (foundPhones.length > 0) {
+            business.phone = foundPhones[0];
+            processedPhones.add(foundPhones[0]);
+            phoneFound = true;
+            console.log(`📞 Final phone selected: ${business.phone} (from ${foundPhones.length} candidates)`);
+          }
+          
+          // Extract Address
+          const addressSelectors = [
+            '.address',
+            '.location',
+            '.store-address',
+            '[class*="address"]',
+            '[class*="location"]',
+            '.addr',
+            '.contact-address'
+          ];
+          
+          for (const selector of addressSelectors) {
+            const addressElement = listing.querySelector(selector);
+            if (addressElement) {
+              let address = addressElement.textContent.trim();
+              if (address && address.length > 10 && !address.includes('Show Number')) {
+                business.address = address;
+                console.log(`📍 Found address: ${address.substring(0, 50)}`);
+                break;
+              }
+            }
+          }
+          
+          // Extract Category
+          const categorySelectors = [
+            '.category',
+            '.store-category',
+            '[class*="category"]',
+            '.tags',
+            '.type',
+            '.business-type'
+          ];
+          
+          for (const selector of categorySelectors) {
+            const categoryElement = listing.querySelector(selector);
+            if (categoryElement) {
+              let category = categoryElement.textContent.trim();
+              if (category && category.length > 2 && category.length < 100 &&
+                  !category.includes('Show')) {
+                business.category = category;
+                console.log(`🏷️ Found category: ${category}`);
+                break;
+              }
+            }
+          }
+          
+          if (!business.category && detectedCat) {
+            business.category = detectedCat;
+          }
+          
+          // Extract Image URL - Enhanced
+          const imageSelectors = [
+            'img',
+            '.store-image img',
+            '.resultbox-img img',
+            '[class*="image"] img',
+            '[class*="img"] img',
+            'picture img',
+            '.thumbnail img',
+            '.logo img'
+          ];
+          
+          for (const selector of imageSelectors) {
+            const imgElements = listing.querySelectorAll(selector);
+            for (const img of imgElements) {
+              let imageUrl = img.src || img.getAttribute('data-src') || img.getAttribute('data-original') || '';
+              
+              if (imageUrl && !imageUrl.startsWith('data:') && 
+                  imageUrl !== 'about:blank' && 
+                  imageUrl.length > 10) {
+                
+                // Clean up URL
+                if (imageUrl.startsWith('//')) {
+                  imageUrl = 'https:' + imageUrl;
+                }
+                
+                // Filter out placeholder images
+                if (!imageUrl.includes('placeholder') && 
+                    !imageUrl.includes('no-image') &&
+                    imageUrl.match(/\.(jpg|jpeg|png|webp|gif)/i)) {
+                  business.image = imageUrl;
+                  console.log(`🖼️ Found image: ${imageUrl.substring(0, 80)}`);
+                  break;
+                }
+              }
+            }
+            if (business.image) break;
+          }
+          
+          // Extract Rating
+          const ratingSelectors = [
+            '.rating',
+            '.stars',
+            '[class*="rating"]',
+            '[class*="star"]'
+          ];
+          
+          for (const selector of ratingSelectors) {
+            const ratingElement = listing.querySelector(selector);
+            if (ratingElement) {
+              const rating = ratingElement.textContent.trim();
+              if (rating && rating.match(/\d+\.?\d*/)) {
+                business.rating = rating;
+                break;
+              }
+            }
+          }
+          
+          // Only add if business has valid name or phone
+          if (business.name || business.phone) {
+            businesses.push(business);
+            console.log(`✨ Added business: ${business.name || 'Unknown'} (Phone: ${business.phone || 'N/A'})`);
+          }
+          
+        } catch (error) {
+          console.log(`Error processing Justdial listing ${index}:`, error.message);
+        }
+      });
+      
+      return businesses;
+    }, city, detectedCategory);
+  }
+
+  async goToNextPage() {
+    try {
+      // Validate browser context before pagination
+      if (!(await this.validateBrowserContext())) {
+        console.log('Browser context lost before pagination, attempting recovery...');
+        if (!(await this.recoverBrowser())) {
+          throw new Error('Failed to recover browser before pagination');
+        }
+      }
+
+      const nextPageSelectors = [
+        'a[title*="Next"]',
+        'a[class*="next"]',
+        '.next-page',
+        '.pagination .next',
+        'li.next a',
+        'a[rel="next"]',
+        'button[aria-label*="Next"]',
+        '.page-next'
+      ];
+      
+      for (const selector of nextPageSelectors) {
+        const nextButton = await this.page.$(selector);
+        if (nextButton) {
+          const isDisabled = await this.page.evaluate(el => {
+            return el.disabled || 
+                   el.classList.contains('disabled') || 
+                   el.hasAttribute('disabled');
+          }, nextButton);
+          
+          if (!isDisabled) {
+            console.log(`🖱️ Clicking next page button: ${selector}`);
+            await nextButton.click();
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Wait for page to load and validate context
+            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            if (!(await this.validateBrowserContext())) {
+              console.log('Browser context lost after navigation, attempting recovery...');
+              if (!(await this.recoverBrowser())) {
+                throw new Error('Failed to recover browser after pagination');
+              }
+            }
+            
+            return true;
+          }
+        }
+      }
+      
+      // Try pagination links
+      const paginationLinks = await this.page.$$('.pagination a, .pagination li a');
+      if (paginationLinks.length > 0) {
+        for (let i = 0; i < paginationLinks.length; i++) {
+          const text = await this.page.evaluate(el => el.textContent, paginationLinks[i]);
+          if (text && (text.includes('>') || text.toLowerCase().includes('next') || text === '»')) {
+            console.log('🖱️ Clicking next page via pagination link');
+            await paginationLinks[i].click();
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            
+            // Wait for page to load and validate context
+            await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 10000 }).catch(() => {});
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            if (!(await this.validateBrowserContext())) {
+              console.log('Browser context lost after pagination, attempting recovery...');
+              if (!(await this.recoverBrowser())) {
+                throw new Error('Failed to recover browser after pagination');
+              }
+            }
+            
+            return true;
+          }
+        }
+      }
+      
+      console.log('📄 No next page found');
+      return false;
+      
+    } catch (error) {
+      console.error('❌ Error during pagination:', error.message);
+      return false;
+    }
+  }
+
+  removeDuplicates(businesses) {
+    const unique = [];
+    const seen = new Set();
+    
+    for (const business of businesses) {
+      const key = `${business.name}|${business.phone}`;
+      if (!seen.has(key) && (business.name || business.phone)) {
+        seen.add(key);
+        unique.push(business);
+      }
+    }
+    
+    return unique;
+  }
+
+  async close() {
+    if (this.browser) {
+      await this.browser.close();
+      this.browser = null;
+      this.page = null;
+    }
+  }
+
+  async validateBrowserContext() {
+    try {
+      if (!this.browser || !this.page) {
+        return false;
+      }
+      
+      // Test if browser context is still valid
+      await this.page.evaluate(() => document.title);
+      return true;
+    } catch (error) {
+      console.warn('Browser context validation failed:', error.message);
+      return false;
+    }
+  }
+
+  async recoverBrowser() {
+    console.log('🔄 Attempting browser recovery...');
+    try {
+      await this.close();
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await this.initialize();
+      console.log('✅ Browser recovery successful');
+      return true;
+    } catch (error) {
+      console.error('❌ Browser recovery failed:', error.message);
+      return false;
+    }
+  }
+
+  async safePageEvaluate(pageFunction, ...args) {
+    const maxRetries = 3;
+    let retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+      try {
+        // Validate browser context before evaluation
+        if (!(await this.validateBrowserContext())) {
+          console.log(`Browser context lost, attempting recovery (attempt ${retryCount + 1}/${maxRetries})`);
+          if (!(await this.recoverBrowser())) {
+            throw new Error('Failed to recover browser context');
+          }
+          // Wait a bit after recovery
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        
+        return await this.page.evaluate(pageFunction, ...args);
+      } catch (error) {
+        retryCount++;
+        console.warn(`Page evaluation failed (attempt ${retryCount}/${maxRetries}):`, error.message);
+        
+        if (retryCount >= maxRetries) {
+          throw new Error(`Page evaluation failed after ${maxRetries} attempts: ${error.message}`);
+        }
+        
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+  }
+}
+
+// Bulk Scraper for large Justdial data extraction
+class BulkJustdialScraper extends JustdialScraper {
+  constructor() {
+    super();
+    this.targetCount = 300;
+    this.minCount = 250;
+    this.maxCount = 350;
+    this.progressCallback = null;
+  }
+
+  setProgressCallback(callback) {
+    this.progressCallback = callback;
+  }
+
+  async scrapeBulkBusinessData(url) {
+    try {
+      await this.initialize();
+      
+      console.log(`🚀 Starting bulk Justdial scraping for ${this.minCount}-${this.maxCount} businesses`);
+      console.log(`🌐 URL: ${url}`);
+      
+      await this.page.goto(url, { 
+        waitUntil: 'networkidle2', 
+        timeout: 60000 
+      });
+      
+      await new Promise(resolve => setTimeout(resolve, 5000));
+      
+      const city = extractCityFromJustdialUrl(url);
+      console.log(`📍 City: ${city}`);
+      
+      await this.waitForBusinessListings();
+      
+      const allBusinesses = await this.extractAllBusinessesWithPagination(city);
+      
+      // Format all phone numbers and filter out invalid ones
+      const validBusinesses = allBusinesses.filter(business => {
+        if (business.phone) {
+          business.phone = formatJustdialPhoneNumber(business.phone);
+          return business.phone !== ''; // Keep only businesses with valid phone numbers
+        }
+        return true; // Keep businesses without phone numbers
+      });
+      
+      const limitedBusinesses = validBusinesses.slice(0, this.maxCount);
+      
+      console.log(`✅ Bulk Justdial scraping complete: ${limitedBusinesses.length} businesses`);
+      
+      if (this.progressCallback) {
+        this.progressCallback({
+          current: limitedBusinesses.length,
+          target: this.minCount,
+          percentage: Math.min((limitedBusinesses.length / this.minCount) * 100, 100),
+          status: 'completed'
+        });
+      }
+      
+      return limitedBusinesses;
+      
+    } catch (error) {
+      console.error('❌ Bulk Justdial scraping error:', error);
+      throw new Error(`Failed to bulk scrape Justdial data: ${error.message}`);
+    } finally {
+      await this.close();
+    }
+  }
+
+  async extractAllBusinessesWithPagination(city) {
+    let allBusinesses = [];
+    let currentPage = 1;
+    let hasNextPage = true;
+    let consecutiveErrors = 0;
+    const maxConsecutiveErrors = 3;
+    
+    while (hasNextPage && currentPage <= 30 && allBusinesses.length < this.maxCount) {
+      console.log(`\n📄 === Bulk Processing Justdial Page ${currentPage} ===`);
+      
+      if (this.progressCallback) {
+        this.progressCallback({
+          current: allBusinesses.length,
+          target: this.minCount,
+          percentage: Math.min((allBusinesses.length / this.minCount) * 100, 100),
+          page: currentPage,
+          status: 'processing'
+        });
+      }
+      
+      try {
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Validate browser context before auto-scroll
+        if (!(await this.validateBrowserContext())) {
+          console.log('Browser context lost during pagination, attempting recovery...');
+          if (!(await this.recoverBrowser())) {
+            throw new Error('Failed to recover browser during pagination');
+          }
+          // Re-navigate to current page after recovery
+          await this.page.goto(this.page.url(), { waitUntil: 'networkidle2', timeout: 60000 });
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        }
+        
+        await this.autoScroll();
+        
+        const businesses = await this.extractBusinessesFromPage(city, '');
+        console.log(`📊 Found ${businesses.length} businesses on Justdial page ${currentPage}`);
+        
+        allBusinesses.push(...businesses);
+        console.log(`📈 Total businesses: ${allBusinesses.length}`);
+        
+        // Reset error counter on successful extraction
+        consecutiveErrors = 0;
+        
+        if (allBusinesses.length >= this.maxCount) {
+          console.log(`🎯 Reached target of ${this.maxCount} businesses`);
+          break;
+        }
+        
+        hasNextPage = await this.goToNextPage();
+        if (hasNextPage) {
+          currentPage++;
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
+      } catch (error) {
+        consecutiveErrors++;
+        console.error(`❌ Error processing page ${currentPage} (attempt ${consecutiveErrors}/${maxConsecutiveErrors}):`, error.message);
+        
+        if (consecutiveErrors >= maxConsecutiveErrors) {
+          console.error(`❌ Too many consecutive errors (${maxConsecutiveErrors}), stopping pagination`);
+          break;
+        }
+        
+        // Try to recover and continue
+        console.log('🔄 Attempting to recover and continue...');
+        try {
+          await this.recoverBrowser();
+          // Try to navigate back to the current page
+          await new Promise(resolve => setTimeout(resolve, 3000));
+        } catch (recoveryError) {
+          console.error('❌ Recovery failed:', recoveryError.message);
+          break;
+        }
+      }
+    }
+    
+    const uniqueBusinesses = this.removeDuplicates(allBusinesses);
+    console.log(`\n✨ After deduplication: ${uniqueBusinesses.length} unique businesses`);
+    
+    return uniqueBusinesses;
+  }
+}
+
 // Enhanced Proxy Rotator with better anti-detection
 class ProxyRotator {
   constructor() {
@@ -2923,6 +4032,281 @@ app.get('/api/excel-scraper/test-scrape', async (req, res) => {
 
   
         
+// Justdial Scraper API Routes
+
+// Get popular Justdial categories
+app.get('/api/justdial-categories', (req, res) => {
+  const popularCategories = [
+    { name: 'Event Organisers', icon: 'calendar', description: 'Event planning and management services' },
+    { name: 'Electricians', icon: 'zap', description: 'Electrical services and repairs' },
+    { name: 'Plumbers', icon: 'wrench', description: 'Plumbing services and repairs' },
+    { name: 'Restaurants', icon: 'utensils', description: 'Food and dining services' },
+    { name: 'Doctors', icon: 'stethoscope', description: 'Medical services and healthcare' },
+    { name: 'Chartered Accountants', icon: 'calculator', description: 'Financial services' },
+    { name: 'Real Estate Agents', icon: 'home', description: 'Property dealers' },
+    { name: 'Hotels', icon: 'bed', description: 'Accommodation services' },
+    { name: 'Packers and Movers', icon: 'truck', description: 'Relocation services' },
+    { name: 'Caterers', icon: 'coffee', description: 'Food catering services' }
+  ];
+  
+  res.json({
+    success: true,
+    categories: popularCategories
+  });
+});
+
+// Scrape Justdial URL (Regular)
+app.post('/api/justdial-scrape', async (req, res) => {
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  if (!url.includes('justdial.com')) {
+    return res.status(400).json({ error: 'Invalid Justdial URL' });
+  }
+  
+  try {
+    console.log(`\n🎯 Starting Justdial scrape request for: ${url}`);
+    const scraper = new JustdialScraper();
+    let data = await scraper.scrapeBusinessData(url, detectedCategory);
+    
+    // Format all phone numbers and ensure they're in correct format
+    data = data.map(business => {
+      if (business.phone) {
+        business.phone = formatJustdialPhoneNumber(business.phone);
+      }
+      return business;
+    });
+    
+    // Log sample of formatted phone numbers
+    if (data.length > 0) {
+      console.log('\n📞 Sample formatted Justdial phone numbers:');
+      console.log('='.repeat(40));
+      data.slice(0, 5).forEach((business, idx) => {
+        console.log(`${idx + 1}. ${business.name}: ${business.phone || 'N/A'}`);
+      });
+      console.log('='.repeat(40));
+    }
+    
+    res.json({
+      success: true,
+      data: data,
+      count: data.length,
+      message: `Successfully extracted ${data.length} businesses with formatted phone numbers` 
+    });
+  } catch (error) {
+    console.error('Justdial scraping error:', error);
+    res.status(500).json({ 
+      error: 'Failed to scrape Justdial data',
+      message: error.message 
+    });
+  }
+});
+
+// Bulk Scrape Justdial URL (250-350 businesses)
+app.post('/api/justdial-bulk-scrape', async (req, res) => {
+  const { url, detectedCategory } = req.body;
+  
+  if (!url) {
+    return res.status(400).json({ error: 'URL is required' });
+  }
+  
+  if (!url.includes('justdial.com')) {
+    return res.status(400).json({ error: 'Invalid Justdial URL' });
+  }
+  
+  // Set up Server-Sent Events
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive',
+    'Access-Control-Allow-Origin': '*'
+  });
+  
+  const progressCallback = (progress) => {
+    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+  };
+  
+  try {
+    console.log(`\n🚀 Starting bulk Justdial scrape request for: ${url}`);
+    const bulkScraper = new BulkJustdialScraper();
+    bulkScraper.setProgressCallback(progressCallback);
+    
+    progressCallback({
+      current: 0,
+      target: 250,
+      percentage: 0,
+      status: 'starting',
+      message: 'Initializing browser...'
+    });
+    
+    let data = await bulkScraper.scrapeBulkBusinessData(url);
+    
+    // Format all phone numbers
+    data = data.map(business => {
+      if (business.phone) {
+        business.phone = formatJustdialPhoneNumber(business.phone);
+      }
+      return business;
+    });
+    
+    console.log('\n📞 Justdial phone number formatting summary:');
+    console.log('='.repeat(40));
+    const phonesWithNumbers = data.filter(b => b.phone).length;
+    console.log(`Total businesses: ${data.length}`);
+    console.log(`Businesses with phone numbers: ${phonesWithNumbers}`);
+    console.log(`Businesses without phone numbers: ${data.length - phonesWithNumbers}`);
+    
+    if (phonesWithNumbers > 0) {
+      console.log('\nSample formatted phone numbers:');
+      data.slice(0, 5).forEach((business, idx) => {
+        if (business.phone) {
+          console.log(`${idx + 1}. ${business.name}: ${business.phone}`);
+        }
+      });
+    }
+    console.log('='.repeat(40));
+    
+    res.write(`data: ${JSON.stringify({ 
+      success: true, 
+      data: data, 
+      count: data.length,
+      phonesWithNumbers: phonesWithNumbers,
+      message: `Successfully extracted ${data.length} businesses with formatted phone numbers`,
+      finished: true 
+    })}\n\n`);
+    res.end();
+    
+  } catch (error) {
+    console.error('Bulk Justdial scraping error:', error);
+    res.write(`data: ${JSON.stringify({ 
+      success: false, 
+      error: error.message,
+      message: `Bulk Justdial scraping failed: ${error.message}`,
+      finished: true 
+    })}\n\n`);
+    res.end();
+  }
+});
+
+// Image proxy endpoint to handle CORS and load Justdial images
+app.get('/api/justdial-proxy/image', async (req, res) => {
+  const { url } = req.query;
+  
+  if (!url || url === 'N/A' || url === '') {
+    return res.status(404).json({ error: 'No image available' });
+  }
+  
+  try {
+    const response = await axios.get(url, {
+      responseType: 'stream',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.justdial.com/',
+        'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8'
+      },
+      timeout: 15000
+    });
+    
+    res.setHeader('Content-Type', response.headers['content-type']);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    response.data.pipe(res);
+    
+  } catch (error) {
+    console.error('Justdial image proxy error:', error.message);
+    res.status(404).json({ error: 'Failed to fetch Justdial image' });
+  }
+});
+
+// Export Justdial data to Excel
+app.post('/api/justdial-export/excel', async (req, res) => {
+  const { data } = req.body;
+  
+  if (!data || !Array.isArray(data)) {
+    return res.status(400).json({ error: 'Data is required' });
+  }
+  
+  try {
+    const normalizedData = data.map(business => ({
+      'Business Name': business.name || '',
+      'Phone Number': business.phone || '',
+      'Address': business.address || '',
+      'Category': business.category || '',
+      'City': business.city || '',
+      'Rating': business.rating || '',
+      'Image URL': business.image || '',
+      'Website': business.website || ''
+    }));
+    
+    const wb = xlsx.utils.book_new();
+    const ws = xlsx.utils.json_to_sheet(normalizedData);
+    
+    ws['!cols'] = [
+      { wch: 30 },
+      { wch: 15 },
+      { wch: 40 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 10 },
+      { wch: 50 },
+      { wch: 30 }
+    ];
+    
+    xlsx.utils.book_append_sheet(wb, ws, 'Justdial Business Data');
+    
+    const buffer = xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=justdial-business-data.xlsx');
+    res.send(buffer);
+  } catch (error) {
+    console.error('Justdial Excel export error:', error);
+    res.status(500).json({ error: 'Failed to export Justdial Excel file' });
+  }
+});
+
+// Export Justdial data to CSV
+app.post('/api/justdial-export/csv', async (req, res) => {
+  const { data } = req.body;
+  
+  if (!data || !Array.isArray(data)) {
+    return res.status(400).json({ error: 'Data is required' });
+  }
+  
+  try {
+    const headers = ['Business Name', 'Phone Number', 'Address', 'Category', 'City', 'Rating', 'Image URL', 'Website'];
+    const csvRows = [headers.join(',')];
+    
+    data.forEach(row => {
+      const values = headers.map(header => {
+        let value = '';
+        if (header === 'Business Name') value = row.name || '';
+        else if (header === 'Phone Number') value = row.phone || '';
+        else if (header === 'Address') value = row.address || '';
+        else if (header === 'Category') value = row.category || '';
+        else if (header === 'City') value = row.city || '';
+        else if (header === 'Rating') value = row.rating || '';
+        else if (header === 'Image URL') value = row.image || '';
+        else if (header === 'Website') value = row.website || '';
+        
+        return `"${String(value).replace(/"/g, '""')}"`;
+      });
+      csvRows.push(values.join(','));
+    });
+    
+    const csvContent = csvRows.join('\n');
+    
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=justdial-business-data.csv');
+    res.send(csvContent);
+  } catch (error) {
+    console.error('Justdial CSV export error:', error);
+    res.status(500).json({ error: 'Failed to export Justdial CSV file' });
+  }
+});
+
 // Google Maps Scraper API Routes
 
 app.post('/api/detect-categories', async (req, res) => {
