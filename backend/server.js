@@ -49,6 +49,44 @@ class JustdialProxyRotator {
 
 const justdialProxyRotator = new JustdialProxyRotator();
 
+// Function to sanitize data for SSE transmission to prevent JSON parsing issues
+function sanitizeForSSE(data) {
+  if (data === null || data === undefined) {
+    return {};
+  }
+  
+  if (typeof data !== 'object') {
+    return { value: String(data).replace(/[\x00-\x1F\x7F]/g, '') };
+  }
+  
+  const sanitized = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (value === null || value === undefined) {
+      sanitized[key] = null;
+    } else if (typeof value === 'string') {
+      // Remove control characters and escape problematic characters
+      sanitized[key] = value
+        .replace(/[\x00-\x1F\x7F]/g, '') // Remove control characters
+        .replace(/\\/g, '\\\\') // Escape backslashes
+        .replace(/"/g, '\\"') // Escape quotes
+        .replace(/\n/g, '\\n') // Escape newlines
+        .replace(/\r/g, '\\r') // Escape carriage returns
+        .replace(/\t/g, '\\t'); // Escape tabs
+    } else if (typeof value === 'object' && !Array.isArray(value)) {
+      sanitized[key] = sanitizeForSSE(value);
+    } else if (Array.isArray(value)) {
+      sanitized[key] = value.map(item => 
+        typeof item === 'object' ? sanitizeForSSE(item) : 
+        typeof item === 'string' ? item.replace(/[\x00-\x1F\x7F]/g, '') : item
+      );
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  
+  return sanitized;
+}
+
 // Helper function to clean and format phone numbers correctly for Justdial
 function formatJustdialPhoneNumber(phone) {
   if (!phone) return '';
@@ -4126,7 +4164,26 @@ app.post('/api/justdial-bulk-scrape', async (req, res) => {
   });
   
   const progressCallback = (progress) => {
-    res.write(`data: ${JSON.stringify(progress)}\n\n`);
+    try {
+      // Sanitize progress data to prevent SSE JSON parsing issues
+      const sanitizedProgress = sanitizeForSSE(progress);
+      const jsonData = JSON.stringify(sanitizedProgress);
+      
+      // Validate JSON before sending
+      if (jsonData && jsonData.startsWith('{') && jsonData.endsWith('}')) {
+        res.write(`data: ${jsonData}\n\n`);
+      } else {
+        console.error('Invalid JSON data for SSE, skipping:', sanitizedProgress);
+      }
+    } catch (error) {
+      console.error('Error in progress callback:', error);
+      // Send a safe fallback message
+      res.write(`data: ${JSON.stringify({
+        status: 'error',
+        message: 'Progress update failed',
+        timestamp: Date.now()
+      })}\n\n`);
+    }
   };
   
   try {
@@ -4169,24 +4226,30 @@ app.post('/api/justdial-bulk-scrape', async (req, res) => {
     }
     console.log('='.repeat(40));
     
-    res.write(`data: ${JSON.stringify({ 
+    const finalData = {
       success: true, 
       data: data, 
       count: data.length,
       phonesWithNumbers: phonesWithNumbers,
       message: `Successfully extracted ${data.length} businesses with formatted phone numbers`,
       finished: true 
-    })}\n\n`);
+    };
+    
+    const sanitizedFinalData = sanitizeForSSE(finalData);
+    res.write(`data: ${JSON.stringify(sanitizedFinalData)}\n\n`);
     res.end();
     
   } catch (error) {
     console.error('Bulk Justdial scraping error:', error);
-    res.write(`data: ${JSON.stringify({ 
+    const errorData = {
       success: false, 
       error: error.message,
       message: `Bulk Justdial scraping failed: ${error.message}`,
       finished: true 
-    })}\n\n`);
+    };
+    
+    const sanitizedErrorData = sanitizeForSSE(errorData);
+    res.write(`data: ${JSON.stringify(sanitizedErrorData)}\n\n`);
     res.end();
   }
 });

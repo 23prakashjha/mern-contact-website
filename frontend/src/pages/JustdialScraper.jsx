@@ -249,70 +249,100 @@ function JustdialScraper() {
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         
         if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              
-              if (data.finished) {
-                setBulkLoading(false);
+        // Process complete messages (ending with \n\n)
+        const messages = buffer.split('\n\n');
+        buffer = messages.pop() || ''; // Keep incomplete message in buffer
+
+        for (const message of messages) {
+          const lines = message.split('\n');
+          
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const jsonStr = line.slice(6).trim();
                 
-                if (data.success) {
-                  const businessCount = data.count;
-                  setData(data.data);
-                  setScraped(true);
-                  setItemsPerPage(40); // Set to 40 for bulk results
-                  
-                  // Show enhanced success message for bulk scraping
-                  if (businessCount >= 100) {
-                    toast.success(`Bulk scraped ${businessCount} unique businesses! 🎉`);
-                  } else if (businessCount >= 90) {
-                    toast.success(`Bulk scraped ${businessCount} unique businesses! ✨`);
-                  } else if (businessCount >= 50) {
-                    toast.success(`Bulk scraped ${businessCount} unique businesses!`);
-                  } else {
-                    toast.success(`Bulk scraped ${businessCount} unique businesses!`);
-                  }
-                  
-                  setBulkProgress({
-                    current: data.count,
-                    target: 250,
-                    percentage: 100,
-                    page: 0,
-                    status: 'completed'
-                  });
-                } else {
-                  toast.error(data.error || 'Bulk scraping failed');
-                  setBulkProgress({
-                    current: 0,
-                    target: 250,
-                    percentage: 0,
-                    page: 0,
-                    status: 'error'
-                  });
+                // Skip empty lines
+                if (!jsonStr) continue;
+                
+                // Validate JSON string before parsing
+                if (!jsonStr.startsWith('{') || !jsonStr.endsWith('}')) {
+                  console.warn('Invalid JSON format, skipping:', jsonStr.substring(0, 100));
+                  continue;
                 }
-                return;
-              } else {
-                // Update progress
-                setBulkProgress({
-                  current: data.current,
-                  target: data.target,
-                  percentage: data.percentage,
-                  page: data.page,
-                  status: data.status
-                });
+                
+                // Safe JSON parsing with detailed error reporting
+                const data = JSON.parse(jsonStr);
+                
+                if (data.finished) {
+                  setBulkLoading(false);
+                  
+                  if (data.success) {
+                    const businessCount = data.count;
+                    setData(data.data);
+                    setScraped(true);
+                    setItemsPerPage(40); // Set to 40 for bulk results
+                    
+                    // Show enhanced success message for bulk scraping
+                    if (businessCount >= 100) {
+                      toast.success(`Bulk scraped ${businessCount} unique businesses! 🎉`);
+                    } else if (businessCount >= 90) {
+                      toast.success(`Bulk scraped ${businessCount} unique businesses! ✨`);
+                    } else if (businessCount >= 50) {
+                      toast.success(`Bulk scraped ${businessCount} unique businesses! 🎯`);
+                    } else {
+                      toast.success(`Bulk scraped ${businessCount} unique businesses! ✅`);
+                    }
+                  } else {
+                    toast.error(data.error || 'Failed to scrape data');
+                  }
+                } else {
+                  // Update progress
+                  setBulkProgress(data);
+                }
+              } catch (parseError) {
+                console.error('Error parsing SSE data:', parseError);
+                console.error('Problematic line:', line.substring(0, 200));
+                
+                // Try to recover by finding the next valid JSON object
+                const jsonStr = line.slice(6).trim();
+                const startIdx = jsonStr.indexOf('{');
+                const endIdx = jsonStr.lastIndexOf('}');
+                
+                if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+                  try {
+                    const recoveredJson = jsonStr.substring(startIdx, endIdx + 1);
+                    const data = JSON.parse(recoveredJson);
+                    console.log('Successfully recovered partial JSON data');
+                    
+                    if (data.finished) {
+                      setBulkLoading(false);
+                      if (data.success) {
+                        const businessCount = data.count;
+                        setData(data.data);
+                        setScraped(true);
+                        setItemsPerPage(40);
+                        toast.success(`Bulk scraped ${businessCount} unique businesses! ✅`);
+                      } else {
+                        toast.error(data.error || 'Failed to scrape data');
+                      }
+                    } else {
+                      setBulkProgress(data);
+                    }
+                  } catch (recoveryError) {
+                    console.error('Recovery attempt failed:', recoveryError);
+                  }
+                }
               }
-            } catch (error) {
-              console.error('Error parsing SSE data:', error);
             }
           }
         }
