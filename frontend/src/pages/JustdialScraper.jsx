@@ -431,24 +431,53 @@ function JustdialScraper() {
   }, []);
 
   return (
-    <div className="space-y-6">
-      <Toaster position="top-right" />
-      
-      {/* Page Header */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Justdial Scraper</h1>
-            <p className="text-gray-600 mt-1">Extract business data from Justdial listings</p>
-          </div>
-          <div className="flex items-center space-x-3">
-            <Building className="w-8 h-8 text-blue-600" />
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50">
+      {/* Animated Background */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-gradient-to-br from-indigo-400/10 to-purple-600/10 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-br from-purple-400/10 to-pink-600/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
+        <div className="absolute bottom-0 left-1/2 w-96 h-96 bg-gradient-to-br from-pink-400/10 to-indigo-600/10 rounded-full blur-3xl animate-pulse delay-500"></div>
       </div>
 
+      <div className="max-w-6xl mx-auto">
+        <div className="space-y-6 animate-fadeIn">
+          <Toaster position="top-right" />
+          
+          {/* Page Header */}
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 border border-white/50 overflow-hidden">
+            <div className="flex items-center justify-between">
+              <div className="space-y-2">
+                <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+                  Justdial Scraper
+                </h1>
+                <p className="text-gray-600 text-lg">
+                  Extract business data from Justdial listings with powerful scraping technology
+                </p>
+                <div className="flex items-center space-x-4 text-sm text-gray-500">
+                  <span className="flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    AI-Powered Scraping
+                  </span>
+                  <span className="flex items-center">
+                    <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    High Accuracy
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center space-x-3">
+                <div className="p-3 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
+                  <Building className="w-8 h-8 text-white" />
+                </div>
+              </div>
+            </div>
+          </div>
+
       {/* URL Input Section */}
-      <div className="bg-white rounded-xl shadow-lg p-6">
+      <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 border border-white/50 overflow-hidden">
         <h2 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
           <Search className="w-5 h-5 mr-2 text-blue-600" />
           Enter Justdial URL
@@ -464,14 +493,14 @@ function JustdialScraper() {
               value={url}
               onChange={handleUrlChange}
               placeholder="https://www.justdial.com/Delhi/Electricians"
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all duration-200 bg-white/80 backdrop-blur-sm"
               disabled={loading}
             />
             {detectedCategory && (
-              <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="mt-3 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
                 <div className="flex items-center">
                   <span className="text-sm font-medium text-blue-900">Detected Category:</span>
-                  <span className="ml-2 px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                  <span className="ml-2 px-3 py-1 rounded-full text-xs font-medium bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border border-blue-200">
                     {detectedCategory}
                   </span>
                 </div>
@@ -486,7 +515,7 @@ function JustdialScraper() {
               type="button"
               onClick={handleBulkScrape}
               disabled={loading || bulkLoading}
-              className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+              className="px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 transition-all duration-200"
             >
               {bulkLoading ? (
                 <>
@@ -506,19 +535,27 @@ function JustdialScraper() {
 
       {/* Loading State */}
       {loading && (
-        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-          <Loader2 className="w-12 h-12 animate-spin text-blue-600 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Scraping in Progress</h3>
-          <p className="text-gray-600">Please wait while we extract business data...</p>
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/50 text-center overflow-hidden">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-blue-200 rounded-full animate-spin border-t-blue-600"></div>
+              <div className="absolute inset-0 w-16 h-16 border-4 border-transparent rounded-full animate-spin border-b-indigo-600"></div>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900">Scraping in Progress</h3>
+            <p className="text-gray-600">Please wait while we extract business data...</p>
+          </div>
         </div>
       )}
 
       {/* Bulk Scraping Progress */}
       {bulkLoading && (
-        <div className="bg-white rounded-xl shadow-lg p-8">
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/50 overflow-hidden">
           <div className="text-center mb-6">
-            <Loader2 className="w-12 h-12 animate-spin text-green-600 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Bulk Scraping in Progress</h3>
+            <div className="relative inline-flex items-center justify-center">
+              <div className="w-16 h-16 border-4 border-green-200 rounded-full animate-spin border-t-green-600"></div>
+              <div className="absolute inset-0 w-16 h-16 border-4 border-transparent rounded-full animate-spin border-b-emerald-600"></div>
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900 mt-4 mb-2">Bulk Scraping in Progress</h3>
             <p className="text-gray-600">Extracting 250-350 unique businesses targeting 100+ from Justdial...</p>
           </div>
           
@@ -530,34 +567,36 @@ function JustdialScraper() {
                 {bulkProgress.current} / {bulkProgress.target} businesses ({bulkProgress.percentage.toFixed(1)}%)
               </span>
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-3">
+            <div className="w-full bg-gray-200 rounded-full h-4 overflow-hidden">
               <div 
-                className="bg-green-600 h-3 rounded-full transition-all duration-300 ease-out"
+                className="bg-gradient-to-r from-green-500 to-emerald-600 h-4 rounded-full transition-all duration-300 ease-out relative overflow-hidden"
                 style={{ width: `${bulkProgress.percentage}%` }}
-              ></div>
+              >
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
+              </div>
             </div>
           </div>
           
           {/* Status Information */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-2xl font-bold text-gray-900">{bulkProgress.current}</div>
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-4 border border-blue-200">
+              <div className="text-2xl font-bold text-blue-900">{bulkProgress.current}</div>
               <div className="text-sm text-gray-600">Unique Businesses</div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-2xl font-bold text-gray-900">{bulkProgress.page}</div>
+            <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-4 border border-purple-200">
+              <div className="text-2xl font-bold text-purple-900">{bulkProgress.page}</div>
               <div className="text-sm text-gray-600">Pages Processed</div>
             </div>
-            <div className="bg-gray-50 rounded-lg p-4">
-              <div className="text-2xl font-bold text-gray-900 capitalize">{bulkProgress.status}</div>
+            <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-4 border border-green-200">
+              <div className="text-2xl font-bold text-green-900 capitalize">{bulkProgress.status}</div>
               <div className="text-sm text-gray-600">Current Status</div>
             </div>
           </div>
           
           {/* Status Messages */}
-          <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl">
             <div className="flex items-center">
-              <div className="w-3 h-3 bg-blue-600 rounded-full animate-pulse mr-3"></div>
+              <div className="w-3 h-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full animate-pulse mr-3"></div>
               <span className="text-sm text-blue-800">
                 {bulkProgress.status === 'starting' && 'Initializing bulk scraper...'}
                 {bulkProgress.status === 'processing' && `Processing page ${bulkProgress.page}...`}
@@ -572,7 +611,7 @@ function JustdialScraper() {
 
       {/* Export Options */}
       {scraped && data.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 border border-white/50 overflow-hidden">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-semibold text-gray-900 flex items-center">
               <Download className="w-5 h-5 mr-2 text-blue-600" />
@@ -585,14 +624,14 @@ function JustdialScraper() {
           <div className="flex flex-wrap gap-4">
             <button
               onClick={handleExportExcel}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center"
+              className="px-6 py-3 bg-gradient-to-r from-green-50 to-emerald-50 text-green-700 rounded-xl hover:from-green-100 hover:to-emerald-100 flex items-center border border-green-200 transition-all duration-200 transform hover:-translate-y-0.5"
             >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
               Download Excel
             </button>
             <button
               onClick={handleExportCSV}
-              className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 flex items-center"
+              className="px-6 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 rounded-xl hover:from-blue-100 hover:to-indigo-100 flex items-center border border-blue-200 transition-all duration-200 transform hover:-translate-y-0.5"
             >
               <FileText className="w-4 h-4 mr-2" />
               Download CSV
@@ -603,7 +642,7 @@ function JustdialScraper() {
 
       {/* Results Section */}
       {scraped && data.length > 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-6">
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-6 border border-white/50 overflow-hidden">
           {/* Results Header with Controls and Search */}
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-6 space-y-4 lg:space-y-0">
             <div>
@@ -631,7 +670,7 @@ function JustdialScraper() {
                     value={searchTerm}
                     onChange={handleSearchChange}
                     placeholder="Search vendor names..."
-                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                    className="pl-10 pr-4 py-2 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64 bg-white/80 backdrop-blur-sm transition-all duration-200"
                   />
                 </div>
                 {searchTerm && (
@@ -640,7 +679,7 @@ function JustdialScraper() {
                       setSearchTerm('');
                       setCurrentPage(1);
                     }}
-                    className="text-sm text-gray-500 hover:text-gray-700"
+                    className="text-sm text-gray-500 hover:text-gray-700 transition-colors"
                   >
                     Clear
                   </button>
@@ -656,12 +695,12 @@ function JustdialScraper() {
 
           {/* Detected Category Display */}
           {detectedCategory && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-4 mb-6">
               <div className="flex items-center">
                 <Search className="w-5 h-5 text-blue-600 mr-2" />
                 <div>
                   <span className="text-sm font-medium text-blue-900">Detected Category:</span>
-                  <span className="ml-2 px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
+                  <span className="ml-2 px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border border-blue-200">
                     {detectedCategory}
                   </span>
                 </div>
@@ -670,9 +709,9 @@ function JustdialScraper() {
           )}
 
           {/* Responsive Table */}
-          <div className="overflow-x-auto border border-gray-200 rounded-lg">
+          <div className="overflow-x-auto overflow-y-hidden border border-gray-200 rounded-xl shadow-sm">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className="bg-gradient-to-r from-gray-50 to-gray-100">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     #
@@ -699,17 +738,17 @@ function JustdialScraper() {
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
                 {currentData.map((business, index) => (
-                  <tr key={startIndex + index} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                  <tr key={startIndex + index} className="hover:bg-gradient-to-r hover:from-blue-50 hover:to-indigo-50 transition-all duration-200">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
                       {startIndex + index + 1}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden">
+                      <div className="w-12 h-12 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl overflow-hidden shadow-sm">
                         {business.image && business.image !== 'N/A' && business.image.trim() !== '' ? (
                           <img
                             src={business.image}
                             alt={business.name || 'Business'}
-                            className="w-12 h-12 object-cover rounded-lg"
+                            className="w-12 h-12 object-cover rounded-xl"
                             loading="lazy"
                             onError={(e) => {
                               e.target.style.display = 'none';
@@ -717,14 +756,16 @@ function JustdialScraper() {
                             }}
                           />
                         ) : null}
-                        <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center" style={{ display: business.image && business.image !== 'N/A' && business.image.trim() !== '' ? 'none' : 'flex' }}>
+                        <div className="w-12 h-12 bg-gradient-to-br from-gray-200 to-gray-300 rounded-xl flex items-center justify-center" style={{ display: business.image && business.image !== 'N/A' && business.image.trim() !== '' ? 'none' : 'flex' }}>
                           <Building className="w-6 h-6 text-gray-400" />
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <Building className="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" />
+                        <div className="p-2 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-lg mr-3">
+                          <Building className="w-4 h-4 text-blue-600" />
+                        </div>
                         <div className="text-sm font-medium text-gray-900">
                           {business.name || 'Unknown Business'}
                         </div>
@@ -732,7 +773,9 @@ function JustdialScraper() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <Phone className="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" />
+                        <div className="p-2 bg-gradient-to-br from-green-100 to-emerald-100 rounded-lg mr-3">
+                          <Phone className="w-4 h-4 text-green-600" />
+                        </div>
                         <span className="text-sm text-gray-900">
                           {business.phone || 'N/A'}
                         </span>
@@ -740,7 +783,9 @@ function JustdialScraper() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-start">
-                        <MapPin className="w-4 h-4 mr-2 text-blue-600 mt-0.5 flex-shrink-0" />
+                        <div className="p-2 bg-gradient-to-br from-purple-100 to-pink-100 rounded-lg mr-3 mt-0.5">
+                          <MapPin className="w-4 h-4 text-purple-600" />
+                        </div>
                         <span className="text-sm text-gray-900 max-w-xs truncate" title={business.address}>
                           {business.address || 'N/A'}
                         </span>
@@ -748,14 +793,16 @@ function JustdialScraper() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <MapPin className="w-4 h-4 mr-2 text-blue-600 flex-shrink-0" />
+                        <div className="p-2 bg-gradient-to-br from-orange-100 to-yellow-100 rounded-lg mr-3">
+                          <MapPin className="w-4 h-4 text-orange-600" />
+                        </div>
                         <span className="text-sm text-gray-900">
                           {business.city || 'N/A'}
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gradient-to-r from-blue-100 to-indigo-100 text-blue-800 border border-blue-200">
                         {business.category || detectedCategory || 'N/A'}
                       </span>
                     </td>
@@ -781,7 +828,7 @@ function JustdialScraper() {
                 <button
                   onClick={prevPage}
                   disabled={currentPage === 1}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-all duration-200"
                 >
                   <ChevronLeft className="w-4 h-4 mr-1" />
                   Previous
@@ -805,8 +852,8 @@ function JustdialScraper() {
                       <button
                         key={pageNum}
                         onClick={() => goToPage(pageNum)}
-                        className={`px-3 py-1 text-sm border rounded-md ${currentPage === pageNum
-                            ? 'bg-blue-600 text-white border-blue-600'
+                        className={`px-3 py-2 text-sm border rounded-xl transition-all duration-200 ${currentPage === pageNum
+                            ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-600 shadow-lg'
                             : 'border-gray-300 hover:bg-gray-50'
                           }`}
                       >
@@ -819,7 +866,7 @@ function JustdialScraper() {
                 <button
                   onClick={nextPage}
                   disabled={currentPage === totalPages}
-                  className="px-3 py-1 text-sm border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  className="px-4 py-2 text-sm border border-gray-300 rounded-xl hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center transition-all duration-200"
                 >
                   Next
                   <ChevronRightIcon className="w-4 h-4 ml-1" />
@@ -832,14 +879,20 @@ function JustdialScraper() {
 
       {/* No Results */}
       {scraped && data.length === 0 && (
-        <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-          <Building className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">No Businesses Found</h3>
-          <p className="text-gray-600">
-            We couldn't find any business data for the provided URL. Please check the URL and try again.
-          </p>
+        <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/50 text-center overflow-hidden">
+          <div className="flex flex-col items-center space-y-4">
+            <div className="p-4 bg-gradient-to-br from-gray-100 to-gray-200 rounded-2xl">
+              <Building className="w-12 h-12 text-gray-400" />
+            </div>
+            <h3 className="text-xl font-semibold text-gray-900">No Businesses Found</h3>
+            <p className="text-gray-600 max-w-md">
+              We couldn't find any business data for the provided URL. Please check the URL and try again.
+            </p>
+          </div>
         </div>
       )}
+        </div>
+      </div>
     </div>
   );
 }
