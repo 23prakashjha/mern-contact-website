@@ -5,6 +5,17 @@ const User = require('../models/User');
 const { authRateLimit, logLogin } = require('../middleware/auth');
 const router = express.Router();
 
+// Debug logging for auth routes
+router.use((req, res, next) => {
+    console.log(`[AUTH DEBUG] ${req.method} ${req.originalUrl} - Headers:`, JSON.stringify({
+        'content-type': req.headers['content-type'],
+        'authorization': req.headers['authorization'] ? 'Bearer ***' : 'none',
+        'origin': req.headers['origin'],
+        'host': req.headers['host']
+    }));
+    next();
+});
+
 // JWT Secret (should be in .env file)
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
