@@ -1277,14 +1277,26 @@ if (fs.existsSync(clientIndexPath)) {
     app.get(/^(?!\/api).*/, (req, res) => {
         res.sendFile(clientIndexPath);
     });
+} else {
+    // Fallback: return a JSON message for non-API routes when SPA is not built
+    app.get(/^(?!\/api).*/, (req, res) => {
+        res.json({
+            message: 'Frontend is served via Vercel at https://mern-contact-website.vercel.app',
+            api: 'API is available at /api/*',
+            docs: 'See README for deployment instructions'
+        });
+    });
 }
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bulk-outreach')
-    .catch(err => {
-        console.log('MongoDB connection error. Running without database...');
-        console.log('Please ensure MongoDB is running for full functionality.');
-    });
+mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bulk-outreach', {
+    connectTimeoutMS: 10000,
+    serverSelectionTimeoutMS: 15000,
+    socketTimeoutMS: 45000
+}).catch(err => {
+    console.log('MongoDB connection error. Running without database...');
+    console.log('Please ensure MONGODB_URI on the server is correct.');
+});
 
 const db = mongoose.connection;
 db.on('error', console.error.bind(console, 'MongoDB connection error:'));

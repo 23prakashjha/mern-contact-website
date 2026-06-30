@@ -18,7 +18,7 @@ const Signup = () => {
   const [errors, setErrors] = useState({});
   const [isMounted, setIsMounted] = useState(false);
   
-  const { signup } = useAuth();
+  const { signup, error } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -154,6 +154,14 @@ const Signup = () => {
         </div>
         
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="rounded-lg bg-red-500/10 border border-red-400/30 p-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                <p className="text-sm text-red-300">{error}</p>
+              </div>
+            </div>
+          )}
           <div className="space-y-4">
             <div className="relative group">
               <label htmlFor="username" className="block text-sm font-medium text-emerald-200 mb-2">

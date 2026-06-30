@@ -13,7 +13,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   
-  const { login, user } = useAuth();
+  const { login, user, error } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -164,6 +164,15 @@ const Login = () => {
 
 
           </div>
+
+          {error && (
+            <div className="rounded-lg bg-red-500/10 border border-red-400/30 p-4">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-5 w-5 text-red-400 flex-shrink-0" />
+                <p className="text-sm text-red-300">{error}</p>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             <div className="flex items-center">

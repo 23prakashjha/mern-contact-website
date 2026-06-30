@@ -33,16 +33,30 @@ const generateToken = (user) => {
   );
 };
 
-const isDatabaseReady = () => mongoose.connection.readyState === 1;
+const waitForDatabase = (timeoutMs = 10000) => {
+  return new Promise((resolve, reject) => {
+    const state = mongoose.connection.readyState;
+    if (state === 1) return resolve();
+    if (state === 2) {
+      const timer = setTimeout(() => {
+        mongoose.connection.removeListener('open', onOpen);
+        reject(new Error('Database connection timed out'));
+      }, timeoutMs);
+      const onOpen = () => {
+        clearTimeout(timer);
+        resolve();
+      };
+      mongoose.connection.once('open', onOpen);
+      return;
+    }
+    reject(new Error('Database is disconnected'));
+  });
+};
 
 // Register/Signup route
 router.post('/signup', async (req, res) => {
   try {
-    if (!isDatabaseReady()) {
-      return res.status(503).json({
-        message: 'Database is not connected. Please check MONGODB_URI on the server.'
-      });
-    }
+    await waitForDatabase();
 
     const { username, email, password, role, companyName } = req.body;
     const normalizedRole = role === 'admin' ? 'admin' : 'user';
@@ -106,6 +120,12 @@ router.post('/signup', async (req, res) => {
   } catch (error) {
     console.error('Signup error:', error);
 
+    if (error.message && error.message.includes('Database')) {
+      return res.status(503).json({
+        message: error.message + '. Please check MONGODB_URI on the server.'
+      });
+    }
+
     if (error.code === 11000) {
       return res.status(400).json({
         message: 'User with this email or username already exists'
@@ -136,11 +156,7 @@ router.post('/login', authRateLimit, async (req, res) => {
       });
     }
 
-    if (!isDatabaseReady()) {
-      return res.status(503).json({
-        message: 'Database is not connected. Please check MONGODB_URI on the server.'
-      });
-    }
+    await waitForDatabase();
 
     // Find user by email
     const user = await User.findOne({ email });
@@ -191,6 +207,13 @@ router.post('/login', authRateLimit, async (req, res) => {
     });
   } catch (error) {
     console.error('Login error:', error);
+
+    if (error.message && error.message.includes('Database')) {
+      return res.status(503).json({
+        message: error.message + '. Please check MONGODB_URI on the server.'
+      });
+    }
+
     res.status(500).json({ 
       message: 'Server error during login' 
     });
@@ -207,6 +230,8 @@ router.get('/verify', async (req, res) => {
         message: 'No token provided' 
       });
     }
+
+    await waitForDatabase();
 
     const decoded = jwt.verify(token, JWT_SECRET);
     const user = await User.findById(decoded.id);
@@ -228,6 +253,13 @@ router.get('/verify', async (req, res) => {
     });
   } catch (error) {
     console.error('Token verification error:', error);
+
+    if (error.message && error.message.includes('Database')) {
+      return res.status(503).json({
+        message: error.message + '. Please check MONGODB_URI on the server.'
+      });
+    }
+
     res.status(401).json({ 
       message: 'Invalid token' 
     });
