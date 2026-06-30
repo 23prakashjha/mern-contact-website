@@ -101,7 +101,7 @@ const IndividualMessage = () => {
   useEffect(() => {
     const fetchCompanies = async () => {
       try {
-        const response = await fetch('http://localhost:5000/api/companies?limit=1000');
+        const response = await fetch('https://mern-contact-website.onrender.com/api/companies?limit=1000');
         const data = await response.json();
         setCompanies(data.companies || []);
       } catch (error) {
@@ -277,21 +277,21 @@ const IndividualMessage = () => {
       
       if (bulkMode && selectedCompanies.length > 0) {
         // Bulk message sending
-        response = await axios.post('http://localhost:5000/api/send-bulk-messages', {
+        response = await axios.post('https://mern-contact-website.onrender.com/api/send-bulk-messages', {
           companyIds: selectedCompanies,
           message: formData.message,
           communicationType: formData.communicationType,
           senderEmail: formData.senderEmail
         });
       } else if (formData.communicationType === 'email') {
-        response = await axios.post('http://localhost:5000/api/send-individual-email', {
+        response = await axios.post('https://mern-contact-website.onrender.com/api/send-individual-email', {
           email: formData.email,
           senderEmail: formData.senderEmail,
           subject: 'Message from Contact Form',
           message: formData.message
         });
       } else if (formData.communicationType === 'all_channels') {
-        response = await axios.post('http://localhost:5000/api/send-individual-combined', {
+        response = await axios.post('https://mern-contact-website.onrender.com/api/send-individual-combined', {
           phone: formData.phone,
           email: formData.email,
           senderEmail: formData.senderEmail,
@@ -300,7 +300,7 @@ const IndividualMessage = () => {
           communicationType: 'all_three'
         });
       } else if (formData.communicationType === 'email_sms') {
-        response = await axios.post('http://localhost:5000/api/send-individual-combined', {
+        response = await axios.post('https://mern-contact-website.onrender.com/api/send-individual-combined', {
           phone: formData.phone,
           email: formData.email,
           senderEmail: formData.senderEmail,
@@ -309,7 +309,7 @@ const IndividualMessage = () => {
           communicationType: 'email_and_sms'
         });
       } else if (formData.communicationType === 'email_whatsapp') {
-        response = await axios.post('http://localhost:5000/api/send-individual-combined', {
+        response = await axios.post('https://mern-contact-website.onrender.com/api/send-individual-combined', {
           phone: formData.phone,
           email: formData.email,
           senderEmail: formData.senderEmail,
@@ -318,7 +318,7 @@ const IndividualMessage = () => {
           communicationType: 'email_and_whatsapp'
         });
       } else {
-        response = await axios.post('http://localhost:5000/api/send-individual-message', {
+        response = await axios.post('https://mern-contact-website.onrender.com/api/send-individual-message', {
           phone: formData.phone,
           message: formData.message,
           communicationType: formData.communicationType

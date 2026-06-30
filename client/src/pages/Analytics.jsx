@@ -12,7 +12,7 @@ const Analytics = () => {
   const [selectedPeriod, setSelectedPeriod] = useState('all'); // all, yesterday, 7days, 1month, 1year
   const [filteredDatesData, setFilteredDatesData] = useState([]);
 
-  const API_BASE_URL = 'http://localhost:5000/api';
+  const API_BASE_URL = 'https://mern-contact-website.onrender.com/api';
 
   useEffect(() => {
     fetchAnalytics();
