@@ -1,9 +1,55 @@
 import axios from 'axios';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+const LOCAL_API_ORIGIN = 'http://localhost:5000';
+
+const apiPath = (path) => {
+  if (!path) return API_BASE_URL;
+  if (/^https?:\/\//i.test(path)) return path;
+
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+};
+
+const normalizeApiUrl = (url) => {
+  if (import.meta.env.DEV || typeof url !== 'string' || !url.startsWith(LOCAL_API_ORIGIN)) {
+    return url;
+  }
+
+  const nextUrl = new URL(url);
+  return apiPath(`${nextUrl.pathname}${nextUrl.search}${nextUrl.hash}`);
+};
 
 // Set global default baseURL for all axios calls
 axios.defaults.baseURL = API_BASE_URL;
+
+axios.interceptors.request.use((config) => {
+  if (config.url) {
+    config.url = normalizeApiUrl(config.url);
+  }
+  return config;
+});
+
+if (!import.meta.env.DEV && typeof window !== 'undefined' && !window.__apiFetchPatched) {
+  const originalFetch = window.fetch.bind(window);
+
+  window.fetch = (input, init) => {
+    if (typeof input === 'string') {
+      return originalFetch(normalizeApiUrl(input), init);
+    }
+
+    if (input instanceof Request) {
+      const normalizedUrl = normalizeApiUrl(input.url);
+      if (normalizedUrl !== input.url) {
+        return originalFetch(new Request(normalizedUrl, input), init);
+      }
+    }
+
+    return originalFetch(input, init);
+  };
+
+  window.__apiFetchPatched = true;
+}
 
 // Create axios instance with base configuration
 const api = axios.create({
@@ -82,4 +128,4 @@ const debounce = (func, wait) => {
   };
 };
 
-export { api, debounce };
+export { API_BASE_URL, api, apiPath, debounce };
