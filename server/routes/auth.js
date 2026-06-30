@@ -136,6 +136,12 @@ router.post('/login', authRateLimit, async (req, res) => {
       });
     }
 
+    if (!isDatabaseReady()) {
+      return res.status(503).json({
+        message: 'Database is not connected. Please check MONGODB_URI on the server.'
+      });
+    }
+
     // Find user by email
     const user = await User.findOne({ email });
     if (!user) {

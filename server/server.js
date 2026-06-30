@@ -7,7 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
 const ExcelJS = require('exceljs');
-require('dotenv').config();
+require('dotenv').config({ path: __dirname + '/.env' });
 
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '1.1.1.1']);
@@ -1189,6 +1189,7 @@ class ProxyRotator {
 const proxyRotator = new ProxyRotator();
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 const allowedOrigins = [
     'http://localhost:5173',
