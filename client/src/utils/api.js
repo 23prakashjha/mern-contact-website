@@ -1,5 +1,8 @@
 import axios from 'axios';
 
+// Set global default baseURL for all axios calls
+axios.defaults.baseURL = 'https://mern-contact-website.onrender.com';
+
 // Create axios instance with base configuration
 const api = axios.create({
   baseURL: 'https://mern-contact-website.onrender.com',

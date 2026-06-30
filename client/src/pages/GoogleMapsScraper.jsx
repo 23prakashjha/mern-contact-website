@@ -64,7 +64,7 @@ function GoogleMapsScraper() {
     
     try {
       // Use SSE for real-time progress
-      const response = await fetch('/api/google-maps-scrape-progress', {
+      const response = await fetch('https://mern-contact-website.onrender.com/api/google-maps-scrape-progress', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

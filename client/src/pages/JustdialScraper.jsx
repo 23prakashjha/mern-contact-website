@@ -243,7 +243,7 @@ function JustdialScraper() {
 
     try {
       // Use fetch with streaming for Server-Sent Events
-      const response = await fetch('/api/justdial-bulk-scrape', {
+      const response = await fetch('https://mern-contact-website.onrender.com/api/justdial-bulk-scrape', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
