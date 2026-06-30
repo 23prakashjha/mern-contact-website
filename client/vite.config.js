@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://mern-contact-website.onrender.com',
+        target: process.env.VITE_API_TARGET || 'https://mern-contact-website.onrender.com',
         changeOrigin: true,
         secure: false,
       }
