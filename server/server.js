@@ -1289,7 +1289,14 @@ if (fs.existsSync(clientIndexPath)) {
 }
 
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bulk-outreach', {
+const mongoUri = process.env.MONGODB_URI;
+if (!mongoUri) {
+    console.log('WARNING: MONGODB_URI is not set in environment variables.');
+    console.log('WARNING: The .env file is NOT deployed to Render (it is in .gitignore).');
+    console.log('WARNING: Set MONGODB_URI in Render dashboard → Environment Variables.');
+    console.log('WARNING: Falling back to localhost - this will NOT work on Render.');
+}
+mongoose.connect(mongoUri || 'mongodb://localhost:27017/bulk-outreach', {
     connectTimeoutMS: 10000,
     serverSelectionTimeoutMS: 15000,
     socketTimeoutMS: 45000

@@ -121,8 +121,9 @@ router.post('/signup', async (req, res) => {
     console.error('Signup error:', error);
 
     if (error.message && error.message.includes('Database')) {
+      const envHint = process.env.MONGODB_URI ? '' : ' Set MONGODB_URI in Render dashboard → Environment Variables (the .env file is not deployed via git).';
       return res.status(503).json({
-        message: error.message + '. Please check MONGODB_URI on the server.'
+        message: error.message + '. Please check MONGODB_URI on the server.' + envHint
       });
     }
 
@@ -209,8 +210,9 @@ router.post('/login', authRateLimit, async (req, res) => {
     console.error('Login error:', error);
 
     if (error.message && error.message.includes('Database')) {
+      const envHint = process.env.MONGODB_URI ? '' : ' Set MONGODB_URI in Render dashboard → Environment Variables (the .env file is not deployed via git).';
       return res.status(503).json({
-        message: error.message + '. Please check MONGODB_URI on the server.'
+        message: error.message + '. Please check MONGODB_URI on the server.' + envHint
       });
     }
 
@@ -255,8 +257,9 @@ router.get('/verify', async (req, res) => {
     console.error('Token verification error:', error);
 
     if (error.message && error.message.includes('Database')) {
+      const envHint = process.env.MONGODB_URI ? '' : ' Set MONGODB_URI in Render dashboard → Environment Variables (the .env file is not deployed via git).';
       return res.status(503).json({
-        message: error.message + '. Please check MONGODB_URI on the server.'
+        message: error.message + '. Please check MONGODB_URI on the server.' + envHint
       });
     }
 
