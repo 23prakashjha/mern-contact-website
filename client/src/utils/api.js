@@ -1,11 +1,13 @@
 import axios from 'axios';
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 // Set global default baseURL for all axios calls
-axios.defaults.baseURL = 'https://mern-contact-website.onrender.com';
+axios.defaults.baseURL = API_BASE_URL;
 
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: 'https://mern-contact-website.onrender.com',
+  baseURL: API_BASE_URL,
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',

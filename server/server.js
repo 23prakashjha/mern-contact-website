@@ -4,6 +4,7 @@ const cors = require('cors');
 const multer = require('multer');
 const xlsx = require('xlsx');
 const path = require('path');
+const fs = require('fs');
 const puppeteer = require('puppeteer');
 const ExcelJS = require('exceljs');
 require('dotenv').config();
@@ -1186,11 +1187,23 @@ const proxyRotator = new ProxyRotator();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const allowedOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:5174',
+    'https://mern-contact-website.vercel.app',
+    'https://mern-contact-website.onrender.com',
+    ...(process.env.CLIENT_URLS || process.env.CLIENT_URL || '')
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter(Boolean)
+];
 
 // Middleware
 app.use(helmet());
 app.use(cors({
-    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174', 'https://mern-contact-website.vercel.app', 'https://mern-contact-website.onrender.com'],
+    origin: allowedOrigins,
     credentials: true
 }));
 
@@ -1249,6 +1262,17 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
+
+const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
+const clientIndexPath = path.join(clientDistPath, 'index.html');
+
+if (fs.existsSync(clientIndexPath)) {
+    app.use(express.static(clientDistPath));
+
+    app.get(/^(?!\/api).*/, (req, res) => {
+        res.sendFile(clientIndexPath);
+    });
+}
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/bulk-outreach')
@@ -2495,7 +2519,6 @@ const upload = multer({
     }
 });
 
-const fs = require('fs');
 if (!fs.existsSync('uploads')) {
     fs.mkdirSync('uploads');
 }

@@ -1,5 +1,6 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const { authRateLimit, logLogin } = require('../middleware/auth');
 const router = express.Router();
@@ -21,10 +22,19 @@ const generateToken = (user) => {
   );
 };
 
+const isDatabaseReady = () => mongoose.connection.readyState === 1;
+
 // Register/Signup route
 router.post('/signup', async (req, res) => {
   try {
+    if (!isDatabaseReady()) {
+      return res.status(503).json({
+        message: 'Database is not connected. Please check MONGODB_URI on the server.'
+      });
+    }
+
     const { username, email, password, role, companyName } = req.body;
+    const normalizedRole = role === 'admin' ? 'admin' : 'user';
 
     // Validation
     if (!username || !email || !password) {
@@ -34,7 +44,7 @@ router.post('/signup', async (req, res) => {
     }
 
     // If role is admin, company name is required
-    if (role === 'admin' && !companyName) {
+    if (normalizedRole === 'admin' && !companyName) {
       return res.status(400).json({ 
         message: 'Company name is required for admin accounts' 
       });
@@ -62,8 +72,8 @@ router.post('/signup', async (req, res) => {
       username,
       email,
       password,
-      role: role || 'user', // Default to 'user' if no role specified
-      companyName: role === 'admin' ? companyName : undefined // Only save company name for admin users
+      role: normalizedRole,
+      companyName: normalizedRole === 'admin' ? companyName : undefined
     });
 
     await user.save();
@@ -84,6 +94,19 @@ router.post('/signup', async (req, res) => {
     });
   } catch (error) {
     console.error('Signup error:', error);
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        message: 'User with this email or username already exists'
+      });
+    }
+
+    if (error.name === 'ValidationError') {
+      return res.status(400).json({
+        message: Object.values(error.errors).map((err) => err.message).join(', ')
+      });
+    }
+
     res.status(500).json({ 
       message: 'Server error during signup' 
     });
