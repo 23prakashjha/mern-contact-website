@@ -37,7 +37,7 @@ const History = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [customCities, setCustomCities] = useState([]);
 
-  const API_BASE_URL = 'https://mern-contact-website.onrender.com/api';
+  const API_BASE_URL = 'http://localhost:5000/api';
 
   
   // Extract unique categories from companies data
@@ -75,7 +75,7 @@ const History = () => {
 
   const fetchProcessedData = async () => {
     try {
-      const historyResponse = await axios.get('https://mern-contact-website.onrender.com/api/excel-scraper/history');
+      const historyResponse = await axios.get('http://localhost:5000/api/excel-scraper/history');
       const recentHistory = historyResponse.data;
       
       if (recentHistory.length > 0) {
@@ -84,7 +84,7 @@ const History = () => {
         
         // Only try to download if filename exists
         if (latestFile.filename) {
-          const response = await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/download/${latestFile.filename}`, {
+          const response = await axios.get(`http://localhost:5000/api/excel-scraper/download/${latestFile.filename}`, {
             responseType: 'arraybuffer',
           });
 
@@ -305,7 +305,7 @@ const History = () => {
     if (!confirm(`Delete ALL ${companies.length} companies?`)) return;
     
     try {
-      const response = await fetch('https://mern-contact-website.onrender.com/api/companies', {
+      const response = await fetch('http://localhost:5000/api/companies', {
         method: 'DELETE'
       });
       

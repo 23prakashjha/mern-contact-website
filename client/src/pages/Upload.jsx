@@ -23,13 +23,13 @@ const Upload = () => {
   const [historyItemsPerPage] = useState(10);
   const [detectedCategories, setDetectedCategories] = useState([]);
 
-  const API_BASE_URL = 'https://mern-contact-website.onrender.com/api';
+  const API_BASE_URL = 'http://localhost:5000/api';
 
   // Fetch upload history
   const fetchUploadHistory = async () => {
     setHistoryLoading(true);
     try {
-      const response = await axios.get('https://mern-contact-website.onrender.com/api/upload/history');
+      const response = await axios.get('http://localhost:5000/api/upload/history');
       setUploadHistory(response.data || []);
     } catch (error) {
       console.error('Failed to fetch upload history:', error);
@@ -91,10 +91,10 @@ const Upload = () => {
       let downloadUrl;
       if (filename.includes('processed-') || filename.includes('google-maps-data')) {
         // Excel Scraper processed files
-        downloadUrl = `https://mern-contact-website.onrender.com/api/excel-scraper/download/${filename}`;
+        downloadUrl = `http://localhost:5000/api/excel-scraper/download/${filename}`;
       } else {
         // Regular uploaded files
-        downloadUrl = `https://mern-contact-website.onrender.com/api/upload/download/${filename}`;
+        downloadUrl = `http://localhost:5000/api/upload/download/${filename}`;
       }
       
       const response = await axios.get(downloadUrl, {
@@ -515,7 +515,7 @@ const Upload = () => {
     try {
       // First check if file exists
       const checkResponse = await makeApiCall(async () => {
-        return await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/check/${filename}`);
+        return await axios.get(`http://localhost:5000/api/excel-scraper/check/${filename}`);
       }, 2, 1000);
 
       if (!checkResponse.data.exists) {
@@ -526,7 +526,7 @@ const Upload = () => {
 
       // Download and process Excel file with rate limiting
       const response = await makeApiCall(async () => {
-        return await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/download/${filename}`, {
+        return await axios.get(`http://localhost:5000/api/excel-scraper/download/${filename}`, {
           responseType: 'arraybuffer',
         });
       }, 3, 1500);
@@ -656,7 +656,7 @@ const Upload = () => {
 
       const historyResponse = await requestQueue.add(async () => {
         return await makeApiCall(async () => {
-          return await axios.get('https://mern-contact-website.onrender.com/api/excel-scraper/history');
+          return await axios.get('http://localhost:5000/api/excel-scraper/history');
         }, 3, 2000);
       });
       
@@ -679,7 +679,7 @@ const Upload = () => {
       try {
         const checkResponse = await requestQueue.add(async () => {
           return await makeApiCall(async () => {
-            return await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/check/${mostRecent.processedFilename}`);
+            return await axios.get(`http://localhost:5000/api/excel-scraper/check/${mostRecent.processedFilename}`);
           }, 2, 1000);
         });
 

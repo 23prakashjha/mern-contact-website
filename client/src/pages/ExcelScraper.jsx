@@ -102,7 +102,7 @@ function ExcelScraper() {
     // Check if there's a recent processed file to display
     const fetchRecentProcessedData = async () => {
       try {
-        const historyResponse = await axios.get('https://mern-contact-website.onrender.com/api/excel-scraper/history');
+        const historyResponse = await axios.get('http://localhost:5000/api/excel-scraper/history');
         const recentHistory = historyResponse.data;
 
         if (recentHistory.length > 0) {
@@ -110,7 +110,7 @@ function ExcelScraper() {
           
           // Check if file exists before trying to fetch
           try {
-            const checkResponse = await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/check/${mostRecent.processedFilename}`);
+            const checkResponse = await axios.get(`http://localhost:5000/api/excel-scraper/check/${mostRecent.processedFilename}`);
 
             if (checkResponse.data.exists) {
               setLastProcessedFile(mostRecent);
@@ -304,7 +304,7 @@ function ExcelScraper() {
     setCurrentCompany('');
 
     try {
-      const response = await axios.post('https://mern-contact-website.onrender.com/api/excel-scraper/upload', formData, {
+      const response = await axios.post('http://localhost:5000/api/excel-scraper/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -348,14 +348,14 @@ function ExcelScraper() {
   const handleDownload = async (filename) => {
     try {
       // First check if file exists
-      const checkResponse = await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/check/${filename}`);
+      const checkResponse = await axios.get(`http://localhost:5000/api/excel-scraper/check/${filename}`);
 
       if (!checkResponse.data.exists) {
         setError('The processed file has expired or been deleted. Please re-upload your Excel file to generate a new processed file.');
         return;
       }
 
-      const response = await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/download/${filename}`, {
+      const response = await axios.get(`http://localhost:5000/api/excel-scraper/download/${filename}`, {
         responseType: 'blob',
       });
 
@@ -378,7 +378,7 @@ function ExcelScraper() {
 
   const fetchHistory = async () => {
     try {
-      const response = await axios.get('https://mern-contact-website.onrender.com/api/excel-scraper/history');
+      const response = await axios.get('http://localhost:5000/api/excel-scraper/history');
       setHistory(response.data);
     } catch (err) {
       console.error('Failed to fetch history:', err);
@@ -388,7 +388,7 @@ function ExcelScraper() {
   const fetchProcessedData = async (filename) => {
     try {
       // First check if file exists
-      const checkResponse = await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/check/${filename}`);
+      const checkResponse = await axios.get(`http://localhost:5000/api/excel-scraper/check/${filename}`);
 
       if (!checkResponse.data.exists) {
         setError('The processed file has expired. Please re-upload your Excel file to generate a new processed file.');
@@ -396,7 +396,7 @@ function ExcelScraper() {
       }
 
       // Fetch the processed Excel file
-      const response = await axios.get(`https://mern-contact-website.onrender.com/api/excel-scraper/download/${filename}`, {
+      const response = await axios.get(`http://localhost:5000/api/excel-scraper/download/${filename}`, {
         responseType: 'arraybuffer',
       });
 
@@ -434,7 +434,7 @@ function ExcelScraper() {
   const testScraping = async () => {
     try {
       // Test single URL
-      const response = await axios.get('https://mern-contact-website.onrender.com/api/excel-scraper/test-scrape?url=https://example.com');
+      const response = await axios.get('http://localhost:5000/api/excel-scraper/test-scrape?url=https://example.com');
       console.log('Test scraping result:', response.data);
 
       const { result } = response.data;

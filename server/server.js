@@ -1196,7 +1196,8 @@ const allowedOrigins = [
     'http://127.0.0.1:5173',
     'http://127.0.0.1:5174',
     'https://mern-contact-website.vercel.app',
-    'https://mern-contact-website.onrender.com',
+    'http://localhost:5173',
+    'http://localhost:5174',
     ...(process.env.CLIENT_URLS || process.env.CLIENT_URL || '')
         .split(',')
         .map((origin) => origin.trim())

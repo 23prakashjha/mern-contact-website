@@ -87,7 +87,7 @@ const Dashboard = () => {
         params.append('page', pagination.currentPage.toString());
         params.append('limit', pagination.limit.toString());
         
-        const url = `https://mern-contact-website.onrender.com/api/companies${params.toString() ? '?' + params.toString() : ''}`;
+        const url = `http://localhost:5000/api/companies${params.toString() ? '?' + params.toString() : ''}`;
         const response = await fetch(url);
         const data = await response.json();
         
@@ -131,7 +131,7 @@ const Dashboard = () => {
   useEffect(() => {
     const fetchCategories = async () => {
       try {
-        const response = await fetch('https://mern-contact-website.onrender.com/api/categories');
+        const response = await fetch('http://localhost:5000/api/categories');
         const categories = await response.json();
         setAvailableCategories(categories);
       } catch (error) {

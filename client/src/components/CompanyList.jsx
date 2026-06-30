@@ -313,7 +313,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, onUpdateCompany, searchT
   const handleDelete = async (companyId, companyName) => {
     if (window.confirm(`Are you sure you want to delete ${companyName}? This action cannot be undone.`)) {
       try {
-        await fetch(`https://mern-contact-website.onrender.com/api/companies/${companyId}`, {
+        await fetch(`http://localhost:5000/api/companies/${companyId}`, {
           method: 'DELETE'
         });
         onDeleteCompany(companyId);
@@ -331,7 +331,7 @@ const CompanyList = ({ companies = [], onDeleteCompany, onUpdateCompany, searchT
 
   const handleSaveEmail = async (companyId) => {
     try {
-      const response = await fetch(`https://mern-contact-website.onrender.com/api/companies/${companyId}/email`, {
+      const response = await fetch(`http://localhost:5000/api/companies/${companyId}/email`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
