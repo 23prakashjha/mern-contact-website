@@ -9,6 +9,9 @@ const puppeteer = require('puppeteer');
 const ExcelJS = require('exceljs');
 require('dotenv').config();
 
+const dns = require('dns');
+dns.setServers(['8.8.8.8', '1.1.1.1']);
+
 // Excel Scraper imports
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
