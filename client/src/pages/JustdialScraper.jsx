@@ -182,7 +182,7 @@ function JustdialScraper() {
 
       if (response.data.success) {
         const businessCount = response.data.count;
-        const scrapedData = response.data.data;
+        const scrapedData = response.data.data || [];
         setData(scrapedData);
         setScraped(true);
         
@@ -297,7 +297,7 @@ function JustdialScraper() {
                   
                   if (data.success) {
                     const businessCount = data.count;
-                    const scrapedData = data.data;
+                    const scrapedData = data.data || [];
                     setData(scrapedData);
                     setScraped(true);
                     setItemsPerPage(40); // Set to 40 for bulk results
@@ -341,7 +341,7 @@ function JustdialScraper() {
                       setBulkLoading(false);
                       if (data.success) {
                         const businessCount = data.count;
-                        setData(data.data);
+                        setData(data.data || []);
                         setScraped(true);
                         setItemsPerPage(40);
                         toast.success(`Bulk scraped ${businessCount} unique businesses! ✅`);
@@ -498,7 +498,7 @@ function JustdialScraper() {
 
   const loadHistoryItem = async (historyItem) => {
     try {
-      setData(historyItem.businesses);
+      setData(historyItem.businesses || []);
       setScraped(true);
       setUrl(historyItem.url);
       setDetectedCategory(historyItem.category);
