@@ -165,9 +165,7 @@ const menuItems = getMenuItems();
       <div
         id="default-sidebar"
         className="
-          fixed top-0 left-0 h-screen w-64 bg-white border-r shadow-xl z-50
-          transform transition-transform duration-300 ease-in-out
-          -translate-x-full lg:translate-x-0
+          h-full w-64 bg-white border-r shadow-xl
         "
         aria-label="Sidebar"
       >
