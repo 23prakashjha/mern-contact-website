@@ -96,7 +96,7 @@ const Layout = ({ children, isNavigating }) => {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 lg:ml-64 min-h-screen relative">
+      <div className="flex-1 min-h-screen relative">
         {/* Navigation Loading Overlay */}
         {isNavigating && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-sm z-50 flex items-center justify-center">
