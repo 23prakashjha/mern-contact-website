@@ -31,6 +31,40 @@ axios.interceptors.request.use((config) => {
   return config;
 });
 
+// Response interceptor for error handling on global axios
+axios.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response) {
+      const { status, data } = error.response;
+      switch (status) {
+        case 401:
+          localStorage.removeItem('token');
+          window.location.href = '/login';
+          break;
+        case 403:
+          console.error('Access forbidden:', data.message);
+          break;
+        case 404:
+          console.error('Resource not found:', data.message);
+          break;
+        case 500:
+          console.error('Server error:', data.message);
+          break;
+        default:
+          console.error('API error:', data.message || 'Unknown error occurred');
+      }
+    } else if (error.request) {
+      console.error('Network error - unable to reach server');
+    } else {
+      console.error('Error:', error.message);
+    }
+    return Promise.reject(error);
+  }
+);
+
 if (!import.meta.env.DEV && typeof window !== 'undefined' && !window.__apiFetchPatched) {
   const originalFetch = window.fetch.bind(window);
 
@@ -78,7 +112,7 @@ api.interceptors.request.use(
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
-    return response.data;
+    return response;
   },
   (error) => {
     // Handle common error scenarios
