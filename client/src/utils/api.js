@@ -112,7 +112,7 @@ api.interceptors.request.use(
 // Response interceptor for error handling
 api.interceptors.response.use(
   (response) => {
-    return response;
+    return response.data;
   },
   (error) => {
     // Handle common error scenarios
