@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
-const LOCAL_API_ORIGIN = 'https://mern-contact-website.onrender.com';
+const RENDER_API_URL = 'https://mern-contact-website.onrender.com';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (import.meta.env.PROD ? RENDER_API_URL : '');
+const LOCAL_API_ORIGIN = RENDER_API_URL;
 
 const apiPath = (path) => {
   if (!path) return API_BASE_URL;
