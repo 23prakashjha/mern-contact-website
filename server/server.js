@@ -1288,28 +1288,67 @@ if (fs.existsSync(clientIndexPath)) {
     });
 }
 
-// MongoDB Connection
+// MongoDB Connection with retry logic
 const mongoUri = process.env.MONGODB_URI;
-if (!mongoUri) {
-    console.log('WARNING: MONGODB_URI is not set in environment variables.');
-    console.log('WARNING: The .env file is NOT deployed to Render (it is in .gitignore).');
-    console.log('WARNING: Set MONGODB_URI in Render dashboard → Environment Variables.');
-    console.log('WARNING: Falling back to localhost - this will NOT work on Render.');
+let dbConnected = false;
+
+async function connectWithRetry(retries = 5, delay = 5000) {
+    if (!mongoUri) {
+        console.log('========================================================');
+        console.log('  ERROR: MONGODB_URI is not set!');
+        console.log('  The .env file is NOT deployed to Render (gitignored).');
+        console.log('  Go to Render Dashboard → your service → Environment');
+        console.log('  Add: MONGODB_URI=mongodb+srv://<user>:<pass>@<cluster>.mongodb.net/<db>');
+        console.log('  Also add: JWT_SECRET=<your-secret-key>');
+        console.log('========================================================');
+        return;
+    }
+
+    for (let i = 0; i < retries; i++) {
+        try {
+            console.log(`Connecting to MongoDB (attempt ${i + 1}/${retries})...`);
+            await mongoose.connect(mongoUri, {
+                connectTimeoutMS: 10000,
+                serverSelectionTimeoutMS: 15000,
+                socketTimeoutMS: 45000
+            });
+            dbConnected = true;
+            console.log('✓ Connected to MongoDB');
+            return;
+        } catch (err) {
+            console.log(`✗ MongoDB connection attempt ${i + 1} failed: ${err.message}`);
+            if (i < retries - 1) {
+                console.log(`  Retrying in ${delay / 1000}s...`);
+                await new Promise(r => setTimeout(r, delay));
+            }
+        }
+    }
+    console.log('========================================================');
+    console.log('  ERROR: All MongoDB connection attempts failed.');
+    console.log('  Signup and login will return 503 until fixed.');
+    console.log('  Check:');
+    console.log('  1. MONGODB_URI is set in Render dashboard (Environment)');
+    console.log('  2. MongoDB Atlas whitelists Render IP (0.0.0.0/0 for dev)');
+    console.log('  3. Credentials in the connection string are correct');
+    console.log('========================================================');
 }
-mongoose.connect(mongoUri || 'mongodb://localhost:27017/bulk-outreach', {
-    connectTimeoutMS: 10000,
-    serverSelectionTimeoutMS: 15000,
-    socketTimeoutMS: 45000
-}).catch(err => {
-    console.log('MongoDB connection error. Running without database...');
-    console.log('Please ensure MONGODB_URI on the server is correct.');
-});
 
 const db = mongoose.connection;
-db.on('error', console.error.bind(console, 'MongoDB connection error:'));
-db.once('open', () => {
-    console.log('Connected to MongoDB');
+db.on('error', (err) => {
+    console.error('MongoDB runtime error:', err.message);
+    dbConnected = false;
 });
+db.on('disconnected', () => {
+    console.log('MongoDB disconnected');
+    dbConnected = false;
+});
+db.on('reconnected', () => {
+    console.log('MongoDB reconnected');
+    dbConnected = true;
+});
+
+// Start connection
+connectWithRetry();
 
 // Company Schema
 const companySchema = new mongoose.Schema({
@@ -4172,7 +4211,19 @@ const cleanupOldFiles = () => {
 };
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'Server is running' });
+  const dbState = mongoose.connection.readyState;
+  const dbStatus = {
+    0: 'disconnected',
+    1: 'connected',
+    2: 'connecting',
+    3: 'disconnecting'
+  }[dbState] || 'unknown';
+  res.json({
+    status: 'Server is running',
+    database: dbStatus,
+    mongodb_uri_set: !!process.env.MONGODB_URI,
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.post('/api/export/excel', async (req, res) => {

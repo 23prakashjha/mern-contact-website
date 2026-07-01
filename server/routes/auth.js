@@ -33,7 +33,7 @@ const generateToken = (user) => {
   );
 };
 
-const waitForDatabase = (timeoutMs = 10000) => {
+const waitForDatabase = (timeoutMs = 30000) => {
   return new Promise((resolve, reject) => {
     const state = mongoose.connection.readyState;
     if (state === 1) return resolve();
@@ -49,7 +49,24 @@ const waitForDatabase = (timeoutMs = 10000) => {
       mongoose.connection.once('open', onOpen);
       return;
     }
-    reject(new Error('Database is disconnected'));
+    // State 0 or 3 - try to reconnect
+    const mongoUri = process.env.MONGODB_URI;
+    const timer = setTimeout(() => {
+      reject(new Error(
+        'Database is disconnected' +
+        (mongoUri ? '' : '. MONGODB_URI not set in Render dashboard Environment Variables (the .env file is gitignored)')
+      ));
+    }, timeoutMs);
+    const onOpen = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    mongoose.connection.once('open', onOpen);
+    mongoose.connect(mongoUri || 'mongodb://localhost:27017/bulk-outreach', {
+      connectTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 15000,
+      socketTimeoutMS: 45000
+    }).catch(() => {});
   });
 };
 
@@ -121,9 +138,11 @@ router.post('/signup', async (req, res) => {
     console.error('Signup error:', error);
 
     if (error.message && error.message.includes('Database')) {
-      const envHint = process.env.MONGODB_URI ? '' : ' Set MONGODB_URI in Render dashboard → Environment Variables (the .env file is not deployed via git).';
+      const envHint = process.env.MONGODB_URI
+        ? 'Check MongoDB Atlas IP whitelist (add 0.0.0.0/0 for testing)'
+        : 'MONGODB_URI not set. Add it in Render Dashboard → Environment → MONGODB_URI (the .env file is gitignored)';
       return res.status(503).json({
-        message: error.message + '. Please check MONGODB_URI on the server.' + envHint
+        message: 'Signup unavailable - ' + error.message + '. ' + envHint
       });
     }
 
@@ -210,9 +229,11 @@ router.post('/login', authRateLimit, async (req, res) => {
     console.error('Login error:', error);
 
     if (error.message && error.message.includes('Database')) {
-      const envHint = process.env.MONGODB_URI ? '' : ' Set MONGODB_URI in Render dashboard → Environment Variables (the .env file is not deployed via git).';
+      const envHint = process.env.MONGODB_URI
+        ? 'Check MongoDB Atlas IP whitelist (add 0.0.0.0/0 for testing)'
+        : 'MONGODB_URI not set. Add it in Render Dashboard → Environment → MONGODB_URI (the .env file is gitignored)';
       return res.status(503).json({
-        message: error.message + '. Please check MONGODB_URI on the server.' + envHint
+        message: 'Login unavailable - ' + error.message + '. ' + envHint
       });
     }
 
@@ -257,9 +278,11 @@ router.get('/verify', async (req, res) => {
     console.error('Token verification error:', error);
 
     if (error.message && error.message.includes('Database')) {
-      const envHint = process.env.MONGODB_URI ? '' : ' Set MONGODB_URI in Render dashboard → Environment Variables (the .env file is not deployed via git).';
+      const envHint = process.env.MONGODB_URI
+        ? 'Check MongoDB Atlas IP whitelist (add 0.0.0.0/0 for testing)'
+        : 'MONGODB_URI not set. Add it in Render Dashboard → Environment → MONGODB_URI (the .env file is gitignored)';
       return res.status(503).json({
-        message: error.message + '. Please check MONGODB_URI on the server.' + envHint
+        message: 'Verification unavailable - ' + error.message + '. ' + envHint
       });
     }
 
