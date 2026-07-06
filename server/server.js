@@ -6,11 +6,35 @@ const xlsx = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
+const { install, detectBrowserPlatform } = require('@puppeteer/browsers');
 const ExcelJS = require('exceljs');
 require('dotenv').config({ path: __dirname + '/.env' });
 
 const dns = require('dns');
 dns.setServers(['8.8.8.8', '1.1.1.1']);
+
+// Ensure Chrome is installed for Puppeteer
+async function ensureChromeInstalled() {
+  try {
+    puppeteer.executablePath();
+    console.log('✓ Chrome already installed at:', puppeteer.executablePath());
+  } catch {
+    console.log('⬇ Chrome not found. Downloading Chrome...');
+    try {
+      const cacheDir = process.env.PUPPETEER_CACHE_DIR || path.join(require('os').homedir(), '.cache', 'puppeteer');
+      const platform = detectBrowserPlatform();
+      console.log(`  Platform: ${platform}, Cache: ${cacheDir}`);
+      const result = await install({
+        browser: 'chrome',
+        cacheDir,
+        buildId: '147.0.7727.56'
+      });
+      console.log('✓ Chrome installed successfully at:', result.executablePath);
+    } catch (installError) {
+      console.error('✗ Failed to install Chrome:', installError.message);
+    }
+  }
+}
 
 // Excel Scraper imports
 const helmet = require('helmet');
@@ -5340,11 +5364,14 @@ if (!process.env.VERCEL) {
   // Run cleanup every hour when the long-running local server is active.
   setInterval(cleanupOldFiles, 60 * 60 * 1000);
 
-  // Start server
-  app.listen(PORT, () => {
-      console.log(`Server running on port ${PORT}`);
-      cleanupOldFiles();
-  });
+  // Start server (wait for Chrome to be available)
+  (async () => {
+    await ensureChromeInstalled();
+    app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+        cleanupOldFiles();
+    });
+  })();
 }
 
 module.exports = app;
