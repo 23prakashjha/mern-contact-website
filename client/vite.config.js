@@ -9,7 +9,7 @@ export default defineConfig(({ mode }) => {
     server: {
       proxy: {
         '/api': {
-          target: env.VITE_API_TARGET || 'https://mern-contact-website.onrender.com',
+          target: env.VITE_API_TARGET || 'http://localhost:5000',
           changeOrigin: true,
           secure: false,
         }

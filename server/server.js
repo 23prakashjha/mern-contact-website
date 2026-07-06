@@ -5375,18 +5375,16 @@ app.post('/api/google-maps-download', async (req, res) => {
 });
 
 
-if (!process.env.VERCEL) {
-  // Run cleanup every hour when the long-running local server is active.
-  setInterval(cleanupOldFiles, 60 * 60 * 1000);
+// Run cleanup every hour.
+setInterval(cleanupOldFiles, 60 * 60 * 1000);
 
-  // Start server (wait for Chrome to be available)
-  (async () => {
-    await ensureChromeInstalled();
-    app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-        cleanupOldFiles();
-    });
-  })();
-}
+// Start server (wait for Chrome to be available)
+(async () => {
+  await ensureChromeInstalled();
+  app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      cleanupOldFiles();
+  });
+})();
 
 module.exports = app;
