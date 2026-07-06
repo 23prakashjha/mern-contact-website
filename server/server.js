@@ -165,8 +165,8 @@ class JustdialScraper {
   async initialize() {
     console.log('🔄 Initializing Justdial browser...');
     
-    this.browser = await puppeteer.launch({
-      headless: false,
+    const justdialLaunchOptions = {
+      headless: process.env.PUPPETEER_HEADLESS !== 'false',
       protocolTimeout: 300000,
       defaultViewport: null,
       args: [
@@ -188,7 +188,11 @@ class JustdialScraper {
         '--disable-background-networking',
         '--disable-blink-features=AutomationControlled'
       ]
-    });
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      justdialLaunchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    this.browser = await puppeteer.launch(justdialLaunchOptions);
     
     this.page = await this.browser.newPage();
     
@@ -1822,7 +1826,7 @@ class EnhancedWebsiteScraper {
             console.log('Initializing enhanced website scraper...');
             
             const launchOptions = {
-                headless: "new",
+                headless: process.env.PUPPETEER_HEADLESS !== 'false' ? "new" : false,
                 protocolTimeout: 300000,
                 defaultViewport: proxyRotator.getRandomViewport(),
                 args: [
@@ -1851,6 +1855,9 @@ class EnhancedWebsiteScraper {
                     '--disable-features=CrossSiteDocumentBlockingAlways'
                 ]
             };
+            if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+                launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+            }
 
             this.browser = await puppeteer.launch(launchOptions);
             this.page = await this.browser.newPage();
@@ -4301,9 +4308,8 @@ app.post('/api/google-maps-scrape', async (req, res) => {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
-      headless: false,
-      executablePath: puppeteer.executablePath(),
+    const gmapsLaunchOptions = {
+      headless: process.env.PUPPETEER_HEADLESS !== 'false',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -4313,7 +4319,11 @@ app.post('/api/google-maps-scrape', async (req, res) => {
         '--disable-features=IsolateOrigins,site-per-process',
         '--window-size=1920,1080'
       ]
-    });
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      gmapsLaunchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    browser = await puppeteer.launch(gmapsLaunchOptions);
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -4419,9 +4429,8 @@ app.post('/api/google-maps-scrape-progress', async (req, res) => {
       message: 'Initializing browser...'
     });
     
-    const browser = await puppeteer.launch({
-      headless: false,
-      executablePath: puppeteer.executablePath(),
+    const progressLaunchOptions = {
+      headless: process.env.PUPPETEER_HEADLESS !== 'false',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -4431,7 +4440,11 @@ app.post('/api/google-maps-scrape-progress', async (req, res) => {
         '--disable-features=IsolateOrigins,site-per-process',
         '--window-size=1920,1080'
       ]
-    });
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      progressLaunchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    const browser = await puppeteer.launch(progressLaunchOptions);
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -5133,9 +5146,8 @@ app.post('/api/detect-categories', async (req, res) => {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
-      headless: "new",
-      executablePath: puppeteer.executablePath(),
+    const detectLaunchOptions = {
+      headless: process.env.PUPPETEER_HEADLESS !== 'false' ? "new" : false,
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -5144,7 +5156,11 @@ app.post('/api/detect-categories', async (req, res) => {
         '--disable-web-security',
         '--disable-features=IsolateOrigins,site-per-process'
       ]
-    });
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      detectLaunchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    browser = await puppeteer.launch(detectLaunchOptions);
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
@@ -5175,9 +5191,8 @@ app.post('/api/scrape', async (req, res) => {
 
   let browser;
   try {
-    browser = await puppeteer.launch({
-      headless: false,
-      executablePath: puppeteer.executablePath(),
+    const scrapeLaunchOptions = {
+      headless: process.env.PUPPETEER_HEADLESS !== 'false',
       args: [
         '--no-sandbox',
         '--disable-setuid-sandbox',
@@ -5186,7 +5201,11 @@ app.post('/api/scrape', async (req, res) => {
         '--disable-web-security',
         '--disable-features=IsolateOrigins,site-per-process'
       ]
-    });
+    };
+    if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+      scrapeLaunchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    }
+    browser = await puppeteer.launch(scrapeLaunchOptions);
     
     const page = await browser.newPage();
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
