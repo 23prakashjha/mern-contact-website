@@ -7,6 +7,7 @@ const path = require('path');
 const fs = require('fs');
 const puppeteer = require('puppeteer');
 const { install, detectBrowserPlatform } = require('@puppeteer/browsers');
+const { PUPPETEER_REVISIONS } = require('puppeteer-core/internal/revisions.js');
 const ExcelJS = require('exceljs');
 require('dotenv').config({ path: __dirname + '/.env' });
 
@@ -15,23 +16,37 @@ dns.setServers(['8.8.8.8', '1.1.1.1']);
 
 // Ensure Chrome is installed for Puppeteer
 async function ensureChromeInstalled() {
-  try {
-    puppeteer.executablePath();
-    console.log('✓ Chrome already installed at:', puppeteer.executablePath());
-  } catch {
-    console.log('⬇ Chrome not found. Downloading Chrome...');
+  const chromePath = puppeteer.executablePath();
+  if (fs.existsSync(chromePath)) {
+    console.log('✓ Chrome ready at:', chromePath);
+    return;
+  }
+
+  const cacheDir = process.env.PUPPETEER_CACHE_DIR || path.join(require('os').homedir(), '.cache', 'puppeteer');
+  const platform = detectBrowserPlatform();
+  const buildId = PUPPETEER_REVISIONS.chrome;
+  console.log('⬇ Chrome ' + buildId + ' not found. Downloading to ' + cacheDir + '...');
+
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const cacheDir = process.env.PUPPETEER_CACHE_DIR || path.join(require('os').homedir(), '.cache', 'puppeteer');
-      const platform = detectBrowserPlatform();
-      console.log(`  Platform: ${platform}, Cache: ${cacheDir}`);
       const result = await install({
         browser: 'chrome',
         cacheDir,
-        buildId: '147.0.7727.56'
+        platform,
+        buildId
       });
-      console.log('✓ Chrome installed successfully at:', result.executablePath);
-    } catch (installError) {
-      console.error('✗ Failed to install Chrome:', installError.message);
+      if (fs.existsSync(result.executablePath)) {
+        console.log('✓ Chrome ' + buildId + ' installed at:', result.executablePath);
+        return result;
+      }
+      throw new Error('Executable missing after install at ' + result.executablePath);
+    } catch (err) {
+      console.error(`  Attempt ${attempt}/${maxRetries} failed: ${err.message}`);
+      if (attempt === maxRetries) {
+        throw new Error('Failed to install Chrome ' + buildId + ': ' + err.message);
+      }
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
 }
